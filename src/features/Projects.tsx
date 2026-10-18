@@ -354,10 +354,9 @@ export function Timeline({ snapshot }: ViewProps) {
   const start = dayStart(date);
   const width = 46;
   const days = 28;
-  const formatter = new Intl.DateTimeFormat(i18n.language, {
-    day: "numeric",
-    month: "short",
-  });
+  // Two-line axis: the month only where it changes, so each 46px column holds a readable day.
+  const dayLabel = new Intl.DateTimeFormat(i18n.language, { day: "numeric" });
+  const monthLabel = new Intl.DateTimeFormat(i18n.language, { month: "short" });
   const position = (at: number) => ((at - start) / day) * width;
   return (
     <section className="panel">
@@ -412,11 +411,16 @@ export function Timeline({ snapshot }: ViewProps) {
                 {t("project")} / {t("task")}
               </div>
               <div className="timeline-axis">
-                {Array.from({ length: days }, (_, i) => (
-                  <span key={i} style={{ width }}>
-                    {formatter.format(addDays(start, i))}
-                  </span>
-                ))}
+                {Array.from({ length: days }, (_, i) => {
+                  const at = addDays(start, i);
+                  const newMonth = i === 0 || new Date(at).getDate() === 1;
+                  return (
+                    <span key={i} style={{ width }}>
+                      <small>{newMonth ? monthLabel.format(at) : ""}</small>
+                      {dayLabel.format(at)}
+                    </span>
+                  );
+                })}
               </div>
             </div>
             {snapshot.projects.map((p) => (

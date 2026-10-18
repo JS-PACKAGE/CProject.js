@@ -1,11 +1,25 @@
 :root {
-  font-family: "DM Sans", "Noto Sans TC", system-ui, sans-serif;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "PingFang TC",
+    "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  /* Type scale: 11px is the floor for any readable text. */
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-lg: 19px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
+  font-family: var(--font-sans);
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
-  font-size: 14px;
+  font-size: var(--text-base);
   line-height: 1.5;
   font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   color-scheme: light;
   --bg: #f6f7fb;
   --surface: #ffffff;
@@ -50,10 +64,18 @@
   --working-text: #69a48b;
   --working-line: #95bca9;
   --overlay: #27213566;
-  --shadow-panel: 0 3px 13px #34314d08;
-  --shadow-card: 0 3px 12px #7561dc12;
+  /* Light surfaces get depth from shadows; dark surfaces from a top highlight. */
+  --highlight: 0 0 #0000;
+  --shadow-panel: 0 1px 2px #1d1a330a, 0 8px 24px -12px #1d1a331f;
+  --shadow-card: 0 1px 2px #1d1a330d;
+  --shadow-card-hover: 0 2px 4px #1d1a330d, 0 12px 24px -12px #5b4bd347;
   --shadow-chip: 0 1px 5px #5555551a;
   --shadow-dialog: 0 20px 100px #25203924;
+}
+:root:lang(ja) {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "Hiragino Sans",
+    "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", Meiryo, system-ui, sans-serif;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -100,8 +122,10 @@
   --working-text: #84cfaa;
   --working-line: #4f8f72;
   --overlay: #05050ab3;
-  --shadow-panel: 0 1px 2px #00000040;
-  --shadow-card: 0 3px 12px #00000040;
+  --highlight: inset 0 1px 0 #ffffff0d;
+  --shadow-panel: 0 1px 2px #0000004d, 0 10px 28px -12px #000000a6;
+  --shadow-card: 0 1px 2px #00000059;
+  --shadow-card-hover: 0 4px 10px #00000059, 0 16px 32px -14px #000000b3;
   --shadow-chip: 0 1px 4px #00000066;
   --shadow-dialog: 0 24px 80px #0000008c;
 }
@@ -138,7 +162,9 @@ button {
   cursor: pointer;
   transition:
     background 0.16s,
-    box-shadow 0.16s;
+    border-color 0.16s,
+    box-shadow 0.16s,
+    transform 0.16s;
 }
 button:hover {
   background: var(--accent-soft);
@@ -157,6 +183,11 @@ button.primary {
 }
 button.primary:hover {
   background: var(--accent-hover);
+  box-shadow: 0 6px 14px var(--accent-glow);
+}
+button.primary:active {
+  transform: translateY(1px);
+  box-shadow: 0 2px 4px var(--accent-glow);
 }
 button.quiet {
   border-color: transparent;
@@ -185,23 +216,29 @@ p {
   margin-top: 0;
 }
 h1 {
-  font-size: 27px;
-  letter-spacing: -0.8px;
+  font-size: var(--text-2xl);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
   margin-bottom: 0;
   font-weight: 700;
+  text-wrap: balance;
 }
 h2 {
-  font-size: 21px;
-  letter-spacing: -0.4px;
+  font-size: var(--text-xl);
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  font-weight: 600;
   margin-bottom: 8px;
+  text-wrap: balance;
 }
 h3 {
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 600;
+  line-height: 1.4;
   margin-bottom: 0;
 }
 small {
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 input,
 select,
@@ -238,7 +275,7 @@ label {
   flex-direction: column;
   gap: 7px;
   font-weight: 500;
-  font-size: 12px;
+  font-size: var(--text-xs);
   margin: 0 0 16px;
   color: var(--text-secondary);
 }
@@ -246,7 +283,7 @@ label {
   flex-direction: row;
   align-items: center;
   gap: 10px;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 progress {
   width: 100%;
@@ -299,8 +336,9 @@ progress::-moz-progress-bar {
   flex-direction: column;
 }
 .brand small {
-  font-size: 8px;
-  letter-spacing: 1.5px;
+  font-size: var(--text-2xs);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
   color: var(--faint);
   font-weight: 500;
 }
@@ -320,9 +358,9 @@ progress::-moz-progress-bar {
   color: #d7d1ff;
 }
 .nav-label {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
-  letter-spacing: 1.5px;
+  letter-spacing: 0.08em;
   color: var(--faint);
   padding: 0 17px 12px;
 }
@@ -340,7 +378,7 @@ progress::-moz-progress-bar {
   text-align: left;
   background: transparent;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 500;
 }
 .sidebar nav button > span {
@@ -365,7 +403,7 @@ progress::-moz-progress-bar {
   flex-wrap: wrap;
   align-items: center;
   gap: 7px;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--muted);
   padding: 15px 8px 0;
 }
@@ -374,7 +412,7 @@ progress::-moz-progress-bar {
   width: 100%;
   margin-left: 14px;
   color: var(--faint);
-  font-size: 9px;
+  font-size: var(--text-2xs);
 }
 .connection-dot {
   width: 6px;
@@ -397,9 +435,9 @@ main {
   gap: 15px;
 }
 .eyebrow {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--faint);
-  letter-spacing: 1px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   display: block;
   margin-bottom: 4px;
@@ -413,7 +451,7 @@ main {
 }
 .header-actions .primary {
   padding: 10px 18px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .content {
   padding: 28px 34px;
@@ -421,13 +459,12 @@ main {
 .preview-banner {
   background: var(--accent-softer);
   color: var(--accent-text);
-  font-size: 10px;
-  letter-spacing: 0.2px;
+  font-size: var(--text-xs);
   padding: 7px 38px;
 }
 .muted {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 .full {
   width: 100%;
@@ -435,9 +472,9 @@ main {
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 13px;
+  border-radius: 14px;
   padding: 25px;
-  box-shadow: var(--shadow-panel);
+  box-shadow: var(--highlight), var(--shadow-panel);
   min-width: 0;
 }
 .section-heading {
@@ -452,7 +489,7 @@ main {
   margin: 0;
 }
 .section-heading > button {
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .section-heading .muted {
   margin: 5px 0 0;
@@ -473,11 +510,11 @@ main {
   margin-bottom: 14px;
 }
 .empty-state h2 {
-  font-size: 22px;
+  font-size: var(--text-xl);
   color: var(--text-secondary);
 }
 .empty-state p {
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 .empty-state.compact {
   min-height: 130px;
@@ -496,7 +533,7 @@ main {
   gap: 12px;
 }
 .search {
-  font-size: 11px;
+  font-size: var(--text-xs);
   background: var(--surface);
   padding: 12px;
 }
@@ -506,21 +543,30 @@ main {
   text-align: left;
   gap: 11px;
   border: 1px solid var(--line-strong);
-  border-radius: 11px;
+  border-radius: 12px;
   padding: 18px 15px;
   background: var(--surface);
+  box-shadow: var(--highlight), var(--shadow-card);
+}
+.project-card:hover {
+  background: var(--accent-softer);
+  transform: translateY(-1px);
+  box-shadow: var(--highlight), var(--shadow-card-hover);
 }
 .project-card.selected {
   border-color: var(--accent-border);
   background: var(--accent-softer);
-  box-shadow: var(--shadow-card);
+  box-shadow:
+    var(--highlight),
+    0 0 0 1px var(--accent-border),
+    var(--shadow-card-hover);
 }
 .project-card > span:nth-child(2) {
   flex: 1;
   min-width: 0;
 }
 .project-card strong {
-  font-size: 13px;
+  font-size: var(--text-sm);
   display: block;
   overflow-wrap: anywhere;
 }
@@ -528,10 +574,11 @@ main {
   display: block;
   color: var(--faint);
   margin: 5px 0 11px;
-  font-size: 10px;
+  font-size: var(--text-2xs);
 }
 .project-card b {
-  font-size: 11px;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
   font-weight: 500;
   color: var(--accent-text);
   margin-top: 2px;
@@ -547,8 +594,9 @@ main {
 .project-detail {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 13px;
+  border-radius: 14px;
   padding: 27px;
+  box-shadow: var(--highlight), var(--shadow-panel);
   min-width: 0;
   min-height: 650px;
 }
@@ -566,7 +614,7 @@ main {
   margin: 10px 0;
 }
 .detail-heading .eyebrow {
-  font-size: 9px;
+  font-size: var(--text-2xs);
 }
 .entity-actions {
   display: inline-flex;
@@ -574,7 +622,7 @@ main {
   flex-shrink: 0;
 }
 .entity-actions button {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   padding: 4px 6px;
   background: transparent;
   border-color: transparent;
@@ -586,13 +634,13 @@ main {
   color: var(--danger) !important;
 }
 .project-overview {
-  background: var(--surface-subtle);
-  border: 1px solid var(--accent-softer);
+  background: linear-gradient(135deg, var(--accent-softer), var(--surface-subtle) 70%);
+  border: 1px solid var(--accent-soft);
   display: flex;
   align-items: center;
   gap: 42px;
   padding: 18px 24px;
-  border-radius: 11px;
+  border-radius: 12px;
   margin: 20px 0 24px;
 }
 .project-overview > div {
@@ -601,24 +649,26 @@ main {
 }
 .project-overview > button {
   margin-left: auto;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .metric {
-  font-size: 27px;
+  font-size: var(--text-2xl);
   color: var(--accent-text);
   font-weight: 600;
-  letter-spacing: -1px;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
 }
 .metric small {
-  font-size: 13px;
+  font-size: var(--text-sm);
   margin-left: 2px;
 }
 .project-overview .muted {
-  font-size: 10px;
+  font-size: var(--text-2xs);
 }
 .notes {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: pre-wrap;
   border-left: 2px solid var(--accent-border);
   padding-left: 12px;
@@ -652,21 +702,22 @@ main {
   min-width: 0;
 }
 .task-name strong {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
   display: block;
   overflow-wrap: anywhere;
 }
 .task-name small {
   display: block;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--faint);
   margin-top: 4px;
 }
 .task-progress {
   width: 65px;
   color: var(--faint);
-  font-size: 10px;
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -678,7 +729,7 @@ main {
   align-items: center;
 }
 .task-tools > button {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   padding: 4px;
   border-color: transparent;
 }
@@ -698,7 +749,7 @@ main {
 .dependency-row strong,
 .rule-row strong,
 .reminder-row strong {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
   display: block;
   overflow-wrap: anywhere;
@@ -707,7 +758,7 @@ main {
 .rule-row small,
 .reminder-row small {
   display: block;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--faint);
   margin-top: 4px;
 }
@@ -715,12 +766,16 @@ main {
   align-items: flex-start;
   flex-wrap: wrap;
 }
+.rule-row > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
 .rule-row .entity-actions {
   margin-left: auto;
 }
 .calendar-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 255px;
+  grid-template-columns: minmax(0, 1fr) 270px;
   gap: 22px;
 }
 .calendar-panel {
@@ -732,10 +787,10 @@ main {
   flex-wrap: wrap;
 }
 .calendar-panel h2 {
-  font-size: 19px;
+  font-size: var(--text-lg);
 }
 .calendar-panel .toolbar button {
-  font-size: 10px;
+  font-size: var(--text-xs);
   padding: 6px 9px;
 }
 .segmented {
@@ -762,7 +817,7 @@ main {
 }
 .weekday-head span {
   text-align: center;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   padding: 12px 0;
   color: var(--faint);
 }
@@ -793,7 +848,8 @@ main {
   width: 24px;
   height: 24px;
   background: transparent;
-  font-size: 10px;
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
   color: var(--muted);
   margin-bottom: 5px;
 }
@@ -803,16 +859,19 @@ main {
 .is-today .date-button {
   background: var(--accent);
   color: var(--on-accent);
+  font-weight: 600;
+  box-shadow: 0 2px 6px var(--accent-glow);
 }
 .calendar-event {
   display: block;
   width: 100%;
   border: none;
   border-left: 2px solid var(--accent-faint);
-  border-radius: 3px;
+  border-radius: 5px;
   background: var(--accent-soft);
   text-align: left;
-  font-size: 9px;
+  font-size: var(--text-2xs);
+  line-height: 1.35;
   padding: 4px 5px;
   color: var(--accent-text);
   margin-bottom: 4px;
@@ -821,7 +880,8 @@ main {
   white-space: nowrap;
 }
 .calendar-event small {
-  font-size: 8px;
+  font-size: inherit;
+  font-variant-numeric: tabular-nums;
 }
 .calendar-event.leave {
   background: var(--leave-bg);
@@ -846,7 +906,7 @@ main {
   padding: 20px 17px;
 }
 .calendar-sidebar h3 {
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .calendar-sidebar > .section-heading:not(:first-child) {
   margin-top: 25px;
@@ -858,10 +918,10 @@ main {
   padding: 1px 6px;
 }
 .calendar-sidebar label {
-  font-size: 10px;
+  font-size: var(--text-2xs);
 }
 .calendar-sidebar select {
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .timeline-scroll {
   overflow: auto;
@@ -873,7 +933,7 @@ main {
 }
 .timeline-header {
   border-bottom: 1px solid var(--line);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--faint);
 }
 .timeline-header > div:first-child,
@@ -888,10 +948,20 @@ main {
 }
 .timeline-axis > span {
   flex-shrink: 0;
-  padding: 14px 2px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 6px 2px 8px;
   text-align: center;
   border-left: 1px solid var(--line-subtle);
-  font-size: 8px;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+.timeline-axis small {
+  font-size: inherit;
+  color: var(--accent-text);
+  font-weight: 600;
+  min-height: 1.3em;
 }
 .timeline-row {
   height: 57px;
@@ -901,7 +971,7 @@ main {
   background: var(--surface);
   border: none;
   border-radius: 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -916,10 +986,11 @@ main {
   position: absolute;
   top: 16px;
   height: 25px;
-  border-radius: 5px;
+  border-radius: 6px;
   color: var(--on-accent);
   padding: 4px 10px;
-  font-size: 10px;
+  font-size: var(--text-2xs);
+  box-shadow: var(--shadow-card);
   white-space: nowrap;
   overflow: hidden;
   min-width: 3px;
@@ -928,7 +999,7 @@ main {
   height: 39px;
 }
 .timeline-row.small .timeline-label {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--muted);
   padding-left: 25px;
 }
@@ -938,7 +1009,8 @@ main {
   border: none;
   opacity: 0.55;
   padding: 0 5px;
-  font-size: 9px;
+  font-size: var(--text-2xs);
+  line-height: 16px;
 }
 .timeline-bar.is-milestone {
   background: transparent !important;
@@ -957,20 +1029,21 @@ main {
   color: var(--on-accent);
   border-radius: 4px;
   font-size: 13px;
+  box-shadow: var(--shadow-card);
   touch-action: none;
   cursor: ew-resize;
   z-index: 1;
 }
 .toolbar label {
   margin: 0;
-  font-size: 9px;
+  font-size: var(--text-2xs);
   flex-direction: row;
   align-items: center;
 }
 .toolbar input {
   width: 145px;
   padding: 5px;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 .timeline .timeline-header > div:first-child,
 .timeline-label {
@@ -994,7 +1067,7 @@ main {
   max-width: 1000px;
 }
 .settings-layout h2 {
-  font-size: 19px;
+  font-size: var(--text-lg);
 }
 .settings-layout form {
   margin-top: 28px;
@@ -1015,7 +1088,7 @@ main {
 .file-button {
   padding: 12px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 .file-button {
   position: relative;
@@ -1040,7 +1113,7 @@ main {
   color: var(--danger);
   padding: 12px 15px;
   border-radius: 9px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   overflow-wrap: anywhere;
 }
 .global-error {
@@ -1064,7 +1137,7 @@ dialog {
   max-height: 88vh;
   padding: 27px;
   background: var(--surface);
-  box-shadow: var(--shadow-dialog);
+  box-shadow: var(--highlight), var(--shadow-dialog);
   color: var(--text);
 }
 dialog::backdrop {
@@ -1106,7 +1179,7 @@ dialog::backdrop {
   gap: 0 15px;
 }
 .field-note {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   align-self: center;
   color: var(--faint);
 }
@@ -1117,7 +1190,7 @@ fieldset {
   margin: 20px 0;
 }
 legend {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--muted);
   padding: 0 7px;
 }
@@ -1163,6 +1236,9 @@ legend {
   }
 }
 @media (max-width: 1250px) {
+  .brand small {
+    display: none;
+  }
   .sidebar {
     width: 200px;
     padding: 30px 14px;
@@ -1284,7 +1360,7 @@ legend {
     gap: 0;
   }
   .sidebar nav button {
-    font-size: 8px;
+    font-size: var(--text-2xs);
     display: flex;
     flex-direction: column;
     padding: 4px 7px;
@@ -1301,14 +1377,11 @@ legend {
   .topbar {
     padding: 20px;
   }
-  .eyebrow {
-    font-size: 9px;
-  }
   h1 {
     font-size: 23px;
   }
   .header-actions .primary {
-    font-size: 10px;
+    font-size: var(--text-xs);
     padding: 9px;
   }
   .content {
@@ -1316,7 +1389,6 @@ legend {
   }
   .preview-banner {
     padding: 7px 20px;
-    font-size: 8px;
   }
   .projects-layout {
     grid-template-columns: 1fr;
@@ -1354,9 +1426,6 @@ legend {
   .project-overview {
     gap: 25px;
   }
-  .project-overview > button {
-    font-size: 10px;
-  }
   .calendar-panel > .section-heading {
     padding: 0 12px;
   }
@@ -1364,7 +1433,6 @@ legend {
     gap: 5px;
   }
   .calendar-panel .toolbar button {
-    font-size: 9px;
     padding: 5px 7px;
   }
   .calendar-day {
@@ -1372,7 +1440,6 @@ legend {
     min-height: 95px;
   }
   .calendar-event {
-    font-size: 8px;
     padding: 3px 2px;
   }
   .calendar-event small {
@@ -1383,7 +1450,6 @@ legend {
     margin: 0;
   }
   .date-button {
-    font-size: 9px;
     width: 21px;
     height: 21px;
   }
@@ -1510,7 +1576,7 @@ legend {
   .sidebar nav button {
     flex: 1;
     min-width: 0;
-    font-size: 10px;
+    font-size: var(--text-2xs);
     padding: 4px;
   }
   .topbar {
@@ -1526,7 +1592,7 @@ legend {
   .section-heading > button,
   .project-overview > button,
   .entity-actions button {
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
   .header-actions {
     margin-left: auto;
@@ -1536,9 +1602,6 @@ legend {
   }
   .sync-banner {
     padding: 10px 16px;
-  }
-  .preview-banner {
-    font-size: 11px;
   }
   .project-card {
     min-width: min(170px, 100%);
@@ -1576,7 +1639,7 @@ legend {
     padding: 5px;
   }
   .calendar-event {
-    font-size: 12px;
+    font-size: var(--text-xs);
     min-height: 44px;
     white-space: normal;
     overflow-wrap: anywhere;
@@ -1587,14 +1650,14 @@ legend {
   .date-button {
     width: 44px;
     height: 44px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
-  .weekday-head {
-    font-size: 12px;
+  .weekday-head span {
+    font-size: var(--text-xs);
   }
   .toolbar label {
     flex-wrap: wrap;
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
   .toolbar input {
     width: 160px;
@@ -1608,7 +1671,7 @@ legend {
     height: 48px;
   }
   .timeline-row.small .timeline-label {
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
   .timeline-bar.task-bar {
     min-height: 32px;
