@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { CalendarClock, ChevronLeft, ChevronRight, Plus, Repeat } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { expandEvents } from "../core/calendar";
 import { useUI, addDays, dayStart, localDate } from "./ui";
@@ -60,13 +61,13 @@ export function Calendar({ snapshot, run }: ViewProps) {
           <h2>{heading.format(date)}</h2>
           <div className="toolbar">
             <button aria-label={t("previous")} onClick={() => navigate(-1)}>
-              ←
+              <ChevronLeft size={16} />
             </button>
             <button onClick={() => set({ date: Date.now() })}>
               {t("today")}
             </button>
             <button aria-label={t("next")} onClick={() => navigate(1)}>
-              →
+              <ChevronRight size={16} />
             </button>
             <div className="segmented">
               {(["month", "week"] as const).map((mode) => (
@@ -94,7 +95,8 @@ export function Calendar({ snapshot, run }: ViewProps) {
                 })
               }
             >
-              + {t("newEvent")}
+              <Plus size={14} />
+              {t("newEvent")}
             </button>
           </div>
         </div>
@@ -185,8 +187,8 @@ export function Calendar({ snapshot, run }: ViewProps) {
                           <small>{timeFormat.format(event.start_at)} </small>
                         )}
                         {event.title}
-                        {event.rrule ? " ↻" : ""}
-                        {event.override ? " ↗" : ""}
+                        {event.rrule && <> <Repeat size={11} role="img" aria-label={t("recurrence")} /></>}
+                        {event.override && <> <CalendarClock size={11} role="img" aria-label={t("override")} /></>}
                       </button>
                     );
                   })}
@@ -221,7 +223,7 @@ export function Calendar({ snapshot, run }: ViewProps) {
             onClick={() => set({ editor: { table: "work_calendars" } })}
             aria-label={t("addCalendar")}
           >
-            ＋
+            <Plus size={14} />
           </button>
         </div>
         <label>
@@ -252,8 +254,9 @@ export function Calendar({ snapshot, run }: ViewProps) {
                     },
                   })
                 }
+                aria-label={`${t("add")}: ${t("rules")}`}
               >
-                ＋
+                <Plus size={14} />
               </button>
             </div>
             {snapshot.weekday_rules
@@ -287,8 +290,9 @@ export function Calendar({ snapshot, run }: ViewProps) {
                     },
                   })
                 }
+                aria-label={`${t("add")}: ${t("exceptions")}`}
               >
-                ＋
+                <Plus size={14} />
               </button>
             </div>
             {snapshot.calendar_exceptions

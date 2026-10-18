@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type {
   CalendarEvent,
@@ -42,7 +43,7 @@ export function Dialog({
           onClick={close}
           aria-label={useTranslation().t("close")}
         >
-          ×
+          <X size={18} />
         </button>
       </div>
       {children}

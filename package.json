@@ -24,6 +24,7 @@
     "@tauri-apps/plugin-notification": "^2.0.0",
     "@tauri-apps/plugin-sql": "^2.0.0",
     "i18next": "^25.0.0",
+    "lucide-react": "^1.59.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-i18next": "^15.0.0",

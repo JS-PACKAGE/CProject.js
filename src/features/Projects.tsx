@@ -1,4 +1,17 @@
 import { useState } from "react";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeftRight,
+  Circle,
+  CircleCheck,
+  CornerDownRight,
+  Diamond,
+  FolderKanban,
+  Plus,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   DndContext,
@@ -102,8 +115,16 @@ export function Projects({ snapshot, run }: ViewProps) {
         className={`task-row ${task.parent_id ? "child" : ""}`}
         key={task.id}
       >
-        <span className={`task-symbol ${task.milestone ? "milestone" : ""}`}>
-          {task.milestone ? "◆" : task.status === "done" ? "✓" : "○"}
+        <span
+          className={`task-symbol ${task.milestone ? "milestone" : task.status === "done" ? "done" : ""}`}
+        >
+          {task.milestone ? (
+            <Diamond size={14} />
+          ) : task.status === "done" ? (
+            <CircleCheck size={18} />
+          ) : (
+            <Circle size={18} />
+          )}
         </span>
         <button
           className="task-name"
@@ -136,7 +157,8 @@ export function Projects({ snapshot, run }: ViewProps) {
                 })
               }
             >
-              + {t("subtask")}
+              <Plus size={14} />
+              {t("subtask")}
             </button>
           )}
           <EntityActions table="tasks" value={task} run={run} />
@@ -158,7 +180,8 @@ export function Projects({ snapshot, run }: ViewProps) {
           className="primary full"
           onClick={() => set({ editor: { table: "projects" } })}
         >
-          + {t("newProject")}
+          <Plus size={16} />
+          {t("newProject")}
         </button>
         {projects.map((p) => (
           <button
@@ -231,7 +254,8 @@ export function Projects({ snapshot, run }: ViewProps) {
                   })
                 }
               >
-                {t("extend")} ↗
+                {t("extend")}
+                <ArrowUpRight size={14} />
               </button>
             </div>
             {project.notes && <p className="notes">{project.notes}</p>}
@@ -251,7 +275,8 @@ export function Projects({ snapshot, run }: ViewProps) {
                   })
                 }
               >
-                + {t("newTask")}
+                <Plus size={14} />
+                {t("newTask")}
               </button>
             </div>
             {tasks
@@ -266,7 +291,7 @@ export function Projects({ snapshot, run }: ViewProps) {
               ))}
             {!tasks.length && (
               <div className="empty-state compact">
-                <span>＋</span>
+                <Plus />
                 <p>{t("empty")}</p>
               </div>
             )}
@@ -283,7 +308,8 @@ export function Projects({ snapshot, run }: ViewProps) {
                   })
                 }
               >
-                + {t("add")}
+                <Plus size={14} />
+                {t("add")}
               </button>
             </div>
             {dependencies.map((d) => (
@@ -294,7 +320,7 @@ export function Projects({ snapshot, run }: ViewProps) {
                       tasks.find((task) => task.id === d.predecessor_task_id)
                         ?.name
                     }{" "}
-                    →{" "}
+                    <ArrowRight size={13} role="img" aria-label={t("fs")} />{" "}
                     {
                       tasks.find((task) => task.id === d.successor_task_id)
                         ?.name
@@ -314,7 +340,7 @@ export function Projects({ snapshot, run }: ViewProps) {
           </>
         ) : (
           <div className="empty-state">
-            <span>◈</span>
+            <FolderKanban />
             <h2>{t("tagline")}</h2>
             <p>{t("noProjects")}</p>
           </div>
@@ -340,7 +366,7 @@ function EndHandle({ project, left }: { project: Project; left: number }) {
         transform: transform ? `translateX(${transform.x}px)` : undefined,
       }}
     >
-      ↔
+      <ChevronsLeftRight size={12} />
     </button>
   );
 }
@@ -367,7 +393,7 @@ export function Timeline({ snapshot }: ViewProps) {
             onClick={() => set({ date: addDays(date, -14) })}
             aria-label={t("previous")}
           >
-            ←
+            <ChevronLeft size={16} />
           </button>
           <button onClick={() => set({ date: Date.now() })}>
             {t("today")}
@@ -376,7 +402,7 @@ export function Timeline({ snapshot }: ViewProps) {
             onClick={() => set({ date: addDays(date, 14) })}
             aria-label={t("next")}
           >
-            →
+            <ChevronRight size={16} />
           </button>
           <label>
             {t("start")}
@@ -470,7 +496,7 @@ export function Timeline({ snapshot }: ViewProps) {
                           set({ editor: { table: "tasks", value: task } })
                         }
                       >
-                        {task.parent_id ? "↳ " : ""}
+                        {task.parent_id && <><CornerDownRight size={12} /> </>}
                         {task.name}
                       </button>
                       <div
@@ -498,7 +524,7 @@ export function Timeline({ snapshot }: ViewProps) {
                           }}
                           aria-label={task.name}
                         >
-                          {task.milestone ? "◆" : task.name}
+                          {task.milestone ? <Diamond size={12} /> : task.name}
                         </button>
                       </div>
                     </div>

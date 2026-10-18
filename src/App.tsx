@@ -1,4 +1,17 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  Bell,
+  CalendarDays,
+  ChartGantt,
+  FolderKanban,
+  Moon,
+  Plus,
+  Settings as SettingsIcon,
+  Sun,
+  Undo2,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Snapshot } from "./core/types";
 import { app, isDesktop } from "./data/app";
@@ -10,20 +23,20 @@ import { sync } from "./sync/client";
 import { useUI, type View } from "./features/ui";
 import "./i18n";
 import { toggleTheme, useTheme } from "./theme";
-const navigation: { view: View; icon: string }[] = [
-  { view: "projects", icon: "◈" },
-  { view: "calendar", icon: "▦" },
-  { view: "timeline", icon: "≋" },
-  { view: "reminders", icon: "◷" },
-  { view: "settings", icon: "⚙" },
+const navigation: { view: View; icon: LucideIcon }[] = [
+  { view: "projects", icon: FolderKanban },
+  { view: "calendar", icon: CalendarDays },
+  { view: "timeline", icon: ChartGantt },
+  { view: "reminders", icon: Bell },
+  { view: "settings", icon: SettingsIcon },
 ];
 function ThemeToggle() {
   const { t } = useTranslation();
   const { theme } = useTheme();
   const label = t(theme === "dark" ? "switchToLight" : "switchToDark");
   return (
-    <button className="quiet theme-toggle" onClick={toggleTheme} title={label} aria-label={label}>
-      {theme === "dark" ? "☀\uFE0E" : "☾"}
+    <button className="quiet icon-button theme-toggle" onClick={toggleTheme} title={label} aria-label={label}>
+      {theme === "dark" ? <Sun size={20} /> : <Moon size={20} />}
     </button>
   );
 }
@@ -147,7 +160,7 @@ export default function App() {
               className={view === item.view ? "active" : ""}
               onClick={() => set({ view: item.view })}
             >
-              <span>{item.icon}</span>
+              <item.icon size={20} />
               {t(item.view)}
               {item.view === "reminders" && snapshot && (
                 <small>
@@ -179,13 +192,13 @@ export default function App() {
             )}
             <ThemeToggle />
             <button
-              className="quiet"
+              className="quiet icon-button"
               disabled={mutationsDisabled}
               onClick={() => void run(() => app.undo())}
               title={t("undo")}
               aria-label={t("undo")}
             >
-              ↶
+              <Undo2 size={20} />
             </button>
             <button
               className="primary"
@@ -203,7 +216,7 @@ export default function App() {
                 })
               }
             >
-              +{" "}
+              <Plus size={16} />
               {t(
                 view === "calendar"
                   ? "newEvent"
@@ -230,7 +243,7 @@ export default function App() {
               {t("error")}: {error}
             </span>
             <button onClick={() => setError("")} aria-label={t("dismiss")}>
-              ×
+              <X size={18} />
             </button>
           </div>
         )}

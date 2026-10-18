@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Bell, CircleCheck, Clock, Download, Plus, RefreshCw, Undo2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Language, Reminder } from "../core/types";
 import { app, isDesktop } from "../data/app";
@@ -26,7 +27,8 @@ export function Reminders({ snapshot, run }: ViewProps) {
           className="primary"
           onClick={() => set({ editor: { table: "reminders" } })}
         >
-          + {t("customReminder")}
+          <Plus size={16} />
+          {t("customReminder")}
         </button>
       </div>
       {[...snapshot.reminders]
@@ -53,7 +55,7 @@ export function Reminders({ snapshot, run }: ViewProps) {
               <span
                 className={`reminder-icon ${reminder.fired_at ? "muted" : ""}`}
               >
-                {reminder.fired_at ? "✓" : "◷"}
+                {reminder.fired_at ? <CircleCheck size={22} /> : <Clock size={22} />}
               </span>
               <div>
                 <strong>{translated}</strong>
@@ -75,7 +77,7 @@ export function Reminders({ snapshot, run }: ViewProps) {
         })}
       {!snapshot.reminders.length && (
         <div className="empty-state">
-          <span>◷</span>
+          <Bell />
           <p>{t("empty")}</p>
         </div>
       )}
@@ -218,9 +220,13 @@ export function Settings({ snapshot, run }: ViewProps) {
         <h2>{t("data")}</h2>
         <p className="muted">{t("importWarning")}</p>
         <div className="data-actions">
-          <button onClick={() => void run(exportFile)}>↓ {t("export")}</button>
+          <button onClick={() => void run(exportFile)}>
+            <Download size={16} />
+            {t("export")}
+          </button>
           <label className="file-button">
-            ↑ {t("import")}
+            <Upload size={16} />
+            {t("import")}
             <input
               type="file"
               accept=".json,application/json"
@@ -233,10 +239,12 @@ export function Settings({ snapshot, run }: ViewProps) {
             />
           </label>
           <button onClick={() => void run(() => app.undo())}>
-            ↶ {t("undo")}
+            <Undo2 size={16} />
+            {t("undo")}
           </button>
           <button onClick={() => void run(() => sync.refresh())}>
-            ↻ {t("refresh")}
+            <RefreshCw size={16} />
+            {t("refresh")}
           </button>
         </div>
       </section>

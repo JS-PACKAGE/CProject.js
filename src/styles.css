@@ -194,16 +194,26 @@ button.quiet {
   background: transparent;
   font-size: 24px;
 }
-button.theme-toggle {
-  font-size: 19px;
-  line-height: 1;
+button.icon-button {
   width: 44px;
   height: 44px;
   padding: 0;
   color: var(--muted);
 }
-button.theme-toggle:hover {
+button.icon-button:hover {
   color: var(--accent-text);
+}
+.lucide {
+  flex-shrink: 0;
+  stroke-width: 1.75;
+  vertical-align: -0.125em;
+}
+/* Zero specificity so component rules (e.g. block-level calendar chips) still win. */
+button:where(:has(> .lucide)) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 a {
   color: inherit;
@@ -372,6 +382,7 @@ progress::-moz-progress-bar {
 .sidebar nav button {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 14px;
   border: none;
   padding: 13px 16px;
@@ -381,10 +392,9 @@ progress::-moz-progress-bar {
   font-size: var(--text-sm);
   font-weight: 500;
 }
-.sidebar nav button > span {
-  font-size: 21px;
-  width: 22px;
-  text-align: center;
+.sidebar nav button > .lucide {
+  width: 20px;
+  height: 20px;
 }
 .sidebar nav button.active {
   background: var(--accent-soft);
@@ -504,8 +514,8 @@ main {
   color: var(--muted);
   padding: 35px;
 }
-.empty-state > span {
-  font-size: 45px;
+.empty-state > span,
+.empty-state > .lucide {
   color: var(--accent-faint);
   margin-bottom: 14px;
 }
@@ -519,8 +529,14 @@ main {
 .empty-state.compact {
   min-height: 130px;
 }
-.empty-state.compact > span {
-  font-size: 26px;
+.empty-state > .lucide {
+  width: 44px;
+  height: 44px;
+  stroke-width: 1.5;
+}
+.empty-state.compact > .lucide {
+  width: 26px;
+  height: 26px;
 }
 .projects-layout {
   display: grid;
@@ -686,11 +702,15 @@ main {
   background: var(--surface-subtle);
 }
 .task-symbol {
-  font-size: 19px;
+  display: inline-flex;
+  width: 18px;
+  justify-content: center;
   color: var(--faint);
 }
+.task-symbol.done {
+  color: var(--success);
+}
 .task-symbol.milestone {
-  font-size: 13px;
   color: var(--warning-text);
 }
 .task-name {
@@ -968,6 +988,7 @@ main {
   border-bottom: 1px solid var(--line-subtle);
 }
 .timeline-label {
+  display: block;
   background: var(--surface);
   border: none;
   border-radius: 0;
@@ -1056,7 +1077,7 @@ main {
   flex: 1;
 }
 .reminder-icon {
-  font-size: 25px;
+  display: inline-flex;
   color: var(--accent-faint);
   margin-right: 6px;
 }
@@ -1092,6 +1113,10 @@ main {
 }
 .file-button {
   position: relative;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border: 1px dashed var(--accent-border);
   border-radius: 8px;
   background: var(--accent-softer);
@@ -1307,8 +1332,9 @@ legend {
     font-size: 0;
     gap: 0;
   }
-  .sidebar nav button > span {
-    font-size: 24px;
+  .sidebar nav button > .lucide {
+    width: 22px;
+    height: 22px;
   }
   .sidebar nav small {
     display: none;
@@ -1367,8 +1393,9 @@ legend {
     gap: 1px;
     min-width: 55px;
   }
-  .sidebar nav button > span {
-    font-size: 20px;
+  .sidebar nav button > .lucide {
+    width: 20px;
+    height: 20px;
   }
   main {
     margin: 0 0 63px;
