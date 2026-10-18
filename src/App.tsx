@@ -23,6 +23,7 @@ import { sync } from "./sync/client";
 import { useUI, type View } from "./features/ui";
 import "./i18n";
 import { toggleTheme, useTheme } from "./theme";
+import { useBrowserReminders } from "./features/browserNotifications";
 const navigation: { view: View; icon: LucideIcon }[] = [
   { view: "projects", icon: FolderKanban },
   { view: "calendar", icon: CalendarDays },
@@ -50,6 +51,12 @@ export default function App() {
   const [initialized, setInitialized] = useState(false);
   const identity = `${syncState.mode}:${syncState.serverUrl}:${syncState.user?.id ?? ""}`;
   const snapshotIdentity = useRef("");
+  const notifications = useBrowserReminders(
+    initialized && syncState.phase === "ready" &&
+      snapshotIdentity.current === identity && snapshot !== null &&
+      (syncState.mode === "local" || !!syncState.user),
+    identity,
+  );
   async function run(action: () => Promise<unknown>) {
     setPending((n) => n + 1);
     try {
@@ -264,7 +271,7 @@ export default function App() {
                 <Reminders snapshot={visibleSnapshot} run={run} />
               )}
               {view === "settings" && (
-                <Settings snapshot={visibleSnapshot} run={run} />
+                <Settings snapshot={visibleSnapshot} run={run} notifications={notifications} />
               )}
             </fieldset>
           ) : (

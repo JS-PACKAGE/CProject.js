@@ -8,6 +8,7 @@ import { Dialog } from "../components/Editor";
 import { useUI } from "./ui";
 import { EntityActions, type ViewProps } from "./Projects";
 import { setThemePreference, useTheme, type ThemePreference } from "../theme";
+import { reminderText, type BrowserNotifications } from "./browserNotifications";
 export function Reminders({ snapshot, run }: ViewProps) {
   const { t, i18n } = useTranslation();
   const set = useUI((s) => s.set);
@@ -37,19 +38,7 @@ export function Reminders({ snapshot, run }: ViewProps) {
             (a.snoozed_to ?? a.trigger_at) - (b.snoozed_to ?? b.trigger_at),
         )
         .map((reminder) => {
-          const name =
-            snapshot.projects.find((p) => p.id === reminder.entity_id)?.name ??
-            snapshot.tasks.find((task) => task.id === reminder.entity_id)
-              ?.name ??
-            snapshot.calendar_events.find((e) => e.id === reminder.entity_id)
-              ?.title ??
-            reminder.params.name ??
-            "";
-          const translated = t(reminder.message_key, {
-            ...reminder.params,
-            name,
-            defaultValue: t("reminderTitle", { name }),
-          });
+          const translated = reminderText(reminder, snapshot);
           return (
             <div className="reminder-row" key={reminder.id}>
               <span
@@ -118,7 +107,7 @@ export function Reminders({ snapshot, run }: ViewProps) {
     </section>
   );
 }
-export function Settings({ snapshot, run }: ViewProps) {
+export function Settings({ snapshot, run, notifications }: ViewProps & { notifications: BrowserNotifications }) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const theme = useTheme();
@@ -203,6 +192,17 @@ export function Settings({ snapshot, run }: ViewProps) {
             {t("save")}
           </button>
         </form>
+      </section>
+      <section className="panel">
+        <h2>{t("browserNotifications")}</h2>
+        <p role="status">{t(`notification_${notifications.status}`)}</p>
+        <p className="muted">{t("webNotificationLimit")}</p>
+        <p className="muted">{t("notificationSoundHint")}</p>
+        {(notifications.status === "default" || notifications.status === "error") && (
+          <button type="button" onClick={() => void notifications.requestPermission()}>
+            <Bell size={16} />{t("enableNotifications")}
+          </button>
+        )}
       </section>
       <section className="panel">
         <h2>{t("data")}</h2>

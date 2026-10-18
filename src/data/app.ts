@@ -3,6 +3,7 @@ import type {
   CalendarContext,
   Entity,
   Settings,
+  Reminder,
   Snapshot,
   TableName,
   Tables,
@@ -323,6 +324,24 @@ export class Application {
         snoozed_to: null,
       });
     }, false);
+  }
+  deliverReminders(
+    deliver: (reminder: Reminder, snapshot: Snapshot) => Promise<boolean>,
+  ): Promise<void> {
+    return this.serialize(async () => {
+      const before = await this.repository.load();
+      const now = Date.now();
+      for (const reminder of before.reminders) {
+        if (reminder.deleted_at !== null || reminder.fired_at !== null ||
+            reminder.snoozed_to !== null || reminder.trigger_at > now) continue;
+        if (!(await deliver(reminder, before))) continue;
+        // Persist each accepted notification before attempting the next one.
+        const next = structuredClone(before);
+        next.reminders.find((row) => row.id === reminder.id)!.fired_at = Date.now();
+        await this.persist(before, next, false);
+        Object.assign(before, next);
+      }
+    });
   }
   exportJSON(): Promise<string> {
     return this.serialize(async () => JSON.stringify(
