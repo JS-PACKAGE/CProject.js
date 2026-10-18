@@ -1,47 +1,37 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, chmodSync } from "node:fs";
 import { join } from "node:path";
-import { randomBytes, createHash, scrypt, timingSafeEqual } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { v7 } from "uuid";
 import type { Change, Entity, Settings, Snapshot } from "../src/core/types";
 import { initialSnapshot, tables, webSettings } from "../src/data/entity";
 import { validateSnapshot } from "../src/data/validation";
 import { expandEvents } from "../src/core/calendar";
-import { ApiError, conflict, invalid } from "./config";
 
-function derive(password: string, salt: string): Promise<Buffer> {
-  const { promise, resolve, reject } = Promise.withResolvers<Buffer>();
-  scrypt(password, salt, 64, { N: 32768, r: 8, p: 3, maxmem: 64 * 1024 * 1024 }, (error, key) => {
-    if (error) reject(error); else resolve(key);
-  });
-  return promise;
-}
+import { ApiError, conflict, invalid } from "./config";
+export interface Workspace { snapshot: Snapshot; revision: number; timezone: string }
+
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 export const WORKSPACE_BYTES = 5 * 1024 * 1024;
 export const LOG_BYTES = 40 * 1024 * 1024;
 const LOG_ENTRIES = 100_000;
-export type User = { id: string; username: string };
-type Account = User & { salt: string; password_hash: string };
 export function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 function cloudSettings(value: unknown): asserts value is Settings {
   if (!record(value) || value.notification_sound !== true || Object.keys(value).some(key => !["language", "notification_sound", "default_reminder_offsets"].includes(key)))
     invalid("Only shared web settings can be synchronized");
 }
-function hash(token: string): string { return createHash("sha256").update(token).digest("hex"); }
 export class Store {
   readonly db: DatabaseSync;
-  constructor(directory: string) {
+  constructor(directory: string, legacyAccount?: string) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(join(directory, "sync.sqlite"));
-    chmodSync(join(directory, "sync.sqlite"), 0o600);
-    this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
-      CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, salt TEXT NOT NULL, password_hash TEXT NOT NULL, snapshot TEXT NOT NULL, timezone TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 0, log_bytes INTEGER NOT NULL DEFAULT 0, log_count INTEGER NOT NULL DEFAULT 0);
-      CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, expires_at INTEGER NOT NULL, kind TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS changes(seq INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, id TEXT NOT NULL, ts REAL NOT NULL, body TEXT NOT NULL, UNIQUE(user_id,id));
-      CREATE INDEX IF NOT EXISTS changes_account ON changes(user_id,seq);`);
-    this.migrateWebSettings();
+    try {
+      chmodSync(join(directory, "sync.sqlite"), 0o600);
+      this.db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA secure_delete=ON;");
+      this.migrate(legacyAccount);
+    } catch (error) {
+      this.db.close();
+      throw error;
+    }
   }
   close(): void { this.db.close(); }
   private transaction<T>(fn: () => T): T {
@@ -49,102 +39,73 @@ export class Store {
     try { const result = fn(); this.db.exec("COMMIT"); return result; }
     catch (error) { this.db.exec("ROLLBACK"); throw error; }
   }
-  private migrateWebSettings(): void {
-    const version = this.db.prepare("PRAGMA user_version").get() as { user_version: number };
-    if (version.user_version >= 1) return;
+  private migrate(legacyAccount?: string): void {
     this.transaction(() => {
+      const version = this.db.prepare("PRAGMA user_version").get() as { user_version: number };
+      if (version.user_version === 2) return;
+      if (version.user_version > 2) throw new Error("Workspace database was created by a newer server");
+      const legacy = this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='accounts'").get();
+      type LegacyAccount = { id: string; username: string; snapshot: string; timezone: string; revision: number; log_bytes: number; log_count: number };
+      const accounts = legacy ? this.db.prepare("SELECT id,username,snapshot,timezone,revision,log_bytes,log_count FROM accounts ORDER BY username").all() as LegacyAccount[] : [];
+      const selected = legacyAccount === undefined ? accounts.length === 1 ? accounts[0] : undefined : accounts.find(account => account.username === legacyAccount);
+      if (legacyAccount !== undefined && !selected)
+        throw new Error("CPROJECT_LEGACY_ACCOUNT does not name an existing legacy account; no workspace data was migrated");
+      if (accounts.length > 1 && !selected)
+        throw new Error("Multiple legacy accounts found. Set CPROJECT_LEGACY_ACCOUNT to the username whose workspace should become shared; all legacy workspaces and history will be archived");
       const normalize = (value: unknown): Settings => {
         if (!record(value) || typeof value.language !== "string" || !Array.isArray(value.default_reminder_offsets))
           throw new Error("Invalid persisted settings");
         return { ...webSettings(value as unknown as Settings), notification_sound: true };
       };
-      const accounts = this.db.prepare("SELECT id,snapshot FROM accounts").all() as { id: string; snapshot: string }[];
-      for (const account of accounts) {
-        const snapshot = JSON.parse(account.snapshot) as Snapshot;
-        snapshot.settings = normalize(snapshot.settings);
-        validateSnapshot(snapshot);
-        this.db.prepare("UPDATE accounts SET snapshot=? WHERE id=?").run(JSON.stringify(snapshot), account.id);
-        const changes = this.db.prepare("SELECT seq,body FROM changes WHERE user_id=? ORDER BY seq").all(account.id) as { seq: number; body: string }[];
-        let bytes = 0;
-        for (const row of changes) {
-          const change = JSON.parse(row.body) as Change;
-          if (change.table === "settings") {
-            change.before = normalize(change.before);
-            change.payload = normalize(change.payload);
-            row.body = JSON.stringify(change);
-            this.db.prepare("UPDATE changes SET body=? WHERE seq=?").run(row.body, row.seq);
-          }
-          bytes += Buffer.byteLength(row.body) + 1;
-        }
-        this.db.prepare("UPDATE accounts SET log_bytes=?,log_count=? WHERE id=?").run(bytes, changes.length, account.id);
-      }
-      // Keep the historical session schema so existing browser sessions remain valid.
-      this.db.prepare("DELETE FROM sessions WHERE kind <> 'web'").run();
-      this.db.exec("PRAGMA user_version=1");
-    });
-  }
-  async provision(username: string, password: string, reset = false): Promise<User> {
-    if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(username)) invalid("Username must be 1–64 ASCII letters, digits, _, . or -");
-    if (password.length < 12 || Buffer.byteLength(password) > 1024) invalid("Password must contain at least 12 characters and at most 1024 bytes");
-    const salt = randomBytes(32).toString("hex");
-    const passwordHash = (await derive(password, salt)).toString("hex");
-    return this.transaction(() => {
-      const existing = this.db.prepare("SELECT id,username FROM accounts WHERE username=?").get(username) as User | undefined;
-      if (existing) {
-        if (!reset) throw new ApiError(409, "exists", "Account exists; use --reset-password to rotate its password and revoke sessions");
-        this.db.prepare("UPDATE accounts SET salt=?,password_hash=? WHERE id=?").run(salt, passwordHash, existing.id);
-        this.db.prepare("DELETE FROM sessions WHERE user_id=?").run(existing.id);
-        return existing;
-      }
-      const user = { id: v7(), username };
-      const snapshot = initialSnapshot();
+      const snapshot = selected ? JSON.parse(selected.snapshot) as Snapshot : initialSnapshot();
+      snapshot.settings = normalize(snapshot.settings);
       validateSnapshot(snapshot);
-      this.db.prepare("INSERT INTO accounts(id,username,salt,password_hash,snapshot,timezone) VALUES(?,?,?,?,?,?)").run(user.id, username, salt, passwordHash, JSON.stringify(snapshot), Intl.DateTimeFormat().resolvedOptions().timeZone);
-      return user;
+      const history = selected ? this.db.prepare("SELECT seq,id,ts,body FROM changes WHERE user_id=? ORDER BY seq").all(selected.id) as { seq: number; id: string; ts: number; body: string }[] : [];
+      for (const row of history) {
+        const change = JSON.parse(row.body) as Change;
+        if (change.table === "settings") {
+          change.before = normalize(change.before);
+          change.payload = normalize(change.payload);
+          row.body = JSON.stringify(change);
+        }
+      }
+      if (legacy) {
+        // Archive exact original data, without retaining credentials or a live account path.
+        this.db.exec(`CREATE TABLE archived_accounts(id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, snapshot TEXT NOT NULL, timezone TEXT NOT NULL, revision INTEGER NOT NULL, log_bytes INTEGER NOT NULL, log_count INTEGER NOT NULL);
+          INSERT INTO archived_accounts SELECT id,username,snapshot,timezone,revision,log_bytes,log_count FROM accounts;
+          CREATE TABLE archived_changes(seq INTEGER PRIMARY KEY, user_id TEXT NOT NULL REFERENCES archived_accounts(id), id TEXT NOT NULL, ts REAL NOT NULL, body TEXT NOT NULL, UNIQUE(user_id,id));
+          INSERT INTO archived_changes SELECT seq,user_id,id,ts,body FROM changes;
+          DROP TABLE IF EXISTS sessions;
+          DROP TABLE changes;
+          DROP TABLE accounts;`);
+      }
+      this.db.exec(`CREATE TABLE workspace(id INTEGER PRIMARY KEY CHECK(id=1), snapshot TEXT NOT NULL, timezone TEXT NOT NULL, revision INTEGER NOT NULL, log_bytes INTEGER NOT NULL, log_count INTEGER NOT NULL);
+        CREATE TABLE changes(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, ts REAL NOT NULL, body TEXT NOT NULL);`);
+      this.db.prepare("INSERT INTO workspace VALUES(1,?,?,?,?,?)").run(JSON.stringify(snapshot), selected?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, selected?.revision ?? 0, history.reduce((sum, row) => sum + Buffer.byteLength(row.body) + 1, 0), history.length);
+      const insert = this.db.prepare("INSERT INTO changes(seq,id,ts,body) VALUES(?,?,?,?)");
+      for (const row of history) insert.run(row.seq, row.id, row.ts, row.body);
+      this.db.exec("PRAGMA user_version=2");
     });
   }
-  async login(username: string, password: string): Promise<{ user: User; token: string }> {
-    const account = this.db.prepare("SELECT id,username,salt,password_hash FROM accounts WHERE username=?").get(username) as Account | undefined;
-    const salt = account?.salt ?? "00".repeat(32);
-    const actual = await derive(password, salt);
-    if (!account || !timingSafeEqual(actual, Buffer.from(account.password_hash, "hex")))
-      throw new ApiError(401, "credentials", "Invalid username or password");
-    // Recheck after async hashing so a concurrent administrator reset cannot issue an old-password session.
-    return this.transaction(() => {
-      const current = this.db.prepare("SELECT password_hash FROM accounts WHERE id=?").get(account.id) as { password_hash: string } | undefined;
-      if (current?.password_hash !== account.password_hash) throw new ApiError(401, "credentials", "Invalid username or password");
-      this.db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(Date.now());
-      const token = randomBytes(32).toString("base64url");
-      this.db.prepare("INSERT INTO sessions(token_hash,user_id,expires_at,kind) VALUES(?,?,?,'web')").run(hash(token), account.id, Date.now() + SESSION_MS);
-      return { user: { id: account.id, username: account.username }, token };
-    });
-  }
-  session(token: string): User {
-    if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw new ApiError(401, "auth", "Authentication required");
-    const row = this.db.prepare("SELECT a.id,a.username FROM sessions s JOIN accounts a ON a.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND s.kind='web'").get(hash(token), Date.now()) as User | undefined;
-    if (!row) throw new ApiError(401, "auth", "Authentication required");
-    return row;
-  }
-  logout(token: string): void { this.db.prepare("DELETE FROM sessions WHERE token_hash=?").run(hash(token)); }
-  workspace(userId: string): { snapshot: Snapshot; revision: number; timezone: string } {
-    const row = this.db.prepare("SELECT snapshot,revision,timezone FROM accounts WHERE id=?").get(userId) as { snapshot: string; revision: number; timezone: string };
+  workspace(): Workspace {
+    const row = this.db.prepare("SELECT snapshot,revision,timezone FROM workspace WHERE id=1").get() as { snapshot: string; revision: number; timezone: string };
     return { snapshot: JSON.parse(row.snapshot) as Snapshot, revision: row.revision, timezone: row.timezone };
   }
-  changes(userId: string): Change[] {
-    return (this.db.prepare("SELECT body FROM changes WHERE user_id=? ORDER BY seq").all(userId) as { body: string }[]).map(row => JSON.parse(row.body) as Change);
+  changes(): Change[] {
+    return (this.db.prepare("SELECT body FROM changes ORDER BY seq").all() as { body: string }[]).map(row => JSON.parse(row.body) as Change);
   }
-  commit(userId: string, input: unknown): { revision: number } {
+  commit(input: unknown): { revision: number } {
     if (!record(input) || !Number.isSafeInteger(input.base_revision) || !Array.isArray(input.changes) || !(input.settings === null || record(input.settings))) invalid("Invalid commit");
     const changes = input.changes;
     if (changes.length > 20_000) throw new ApiError(413, "limit", "Too many changes in one transaction");
     return this.transaction(() => {
-      const { snapshot, revision } = this.workspace(userId);
+      const { snapshot, revision } = this.workspace();
       if (input.base_revision !== revision) conflict();
       const ids = new Set<string>();
       let settingsChange: Change | undefined;
       for (const raw of changes) {
         if (!record(raw) || typeof raw.id !== "string" || !uuid.test(raw.id) || typeof raw.device_id !== "string" || !uuid.test(raw.device_id) || typeof raw.ts !== "number" || !Number.isFinite(raw.ts) || !["upsert", "delete"].includes(String(raw.op))) invalid("Invalid change metadata");
-        if (ids.has(raw.id) || this.db.prepare("SELECT 1 FROM changes WHERE user_id=? AND id=?").get(userId, raw.id)) conflict();
+        if (ids.has(raw.id) || this.db.prepare("SELECT 1 FROM changes WHERE id=?").get(raw.id)) conflict();
         ids.add(raw.id);
         const change = raw as unknown as Change;
         if (change.table === "settings") {
@@ -178,14 +139,14 @@ export class Store {
       if (Buffer.byteLength(serialized) > WORKSPACE_BYTES) throw new ApiError(413, "limit", "Workspace exceeds 5 MiB limit");
       const bodies = changes.map(change => JSON.stringify(change));
       const bytes = bodies.reduce((n, body) => n + Buffer.byteLength(body) + 1, 0);
-      const counts = this.db.prepare("SELECT log_bytes,log_count FROM accounts WHERE id=?").get(userId) as { log_bytes: number; log_count: number };
-      if (counts.log_bytes + bytes > LOG_BYTES || counts.log_count + changes.length > LOG_ENTRIES) throw new ApiError(413, "limit", "Account history limit reached; export data and contact administrator");
+      const counts = this.db.prepare("SELECT log_bytes,log_count FROM workspace WHERE id=1").get() as { log_bytes: number; log_count: number };
+      if (counts.log_bytes + bytes > LOG_BYTES || counts.log_count + changes.length > LOG_ENTRIES) throw new ApiError(413, "limit", "Workspace history limit reached; export data and contact administrator");
       for (let i = 0; i < changes.length; i++) {
         const c = changes[i] as Change;
-        this.db.prepare("INSERT INTO changes(user_id,id,ts,body) VALUES(?,?,?,?)").run(userId, c.id, c.ts, bodies[i]!);
+        this.db.prepare("INSERT INTO changes(id,ts,body) VALUES(?,?,?)").run(c.id, c.ts, bodies[i]!);
       }
       const nextRevision = revision + (changes.length ? 1 : 0);
-      this.db.prepare("UPDATE accounts SET snapshot=?,revision=?,log_bytes=log_bytes+?,log_count=log_count+? WHERE id=?").run(serialized, nextRevision, bytes, changes.length, userId);
+      this.db.prepare("UPDATE workspace SET snapshot=?,revision=?,log_bytes=log_bytes+?,log_count=log_count+? WHERE id=1").run(serialized, nextRevision, bytes, changes.length);
       return { revision: nextRevision };
     });
   }

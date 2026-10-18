@@ -5,7 +5,6 @@ import { ApiError, type Config } from "./config";
 import { record, Store } from "./store";
 
 const BODY_BYTES = 10 * 1024 * 1024;
-const COOKIE = "cproject_session";
 const MIME: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".woff2": "font/woff2", ".woff": "font/woff", ".txt": "text/plain; charset=utf-8", ".webmanifest": "application/manifest+json" };
 function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
@@ -33,31 +32,7 @@ async function body(req: IncomingMessage): Promise<unknown> {
   req.on("aborted", () => reject(new ApiError(400, "validation", "Request aborted")));
   return promise;
 }
-class LoginLimiter {
-  private entries = new Map<string, { count: number; until: number }>();
-  private active = 0;
-  enter(ip: string, username: string): () => void {
-    const now = Date.now();
-    for (const [key, entry] of this.entries) if (entry.until <= now) this.entries.delete(key);
-    if (this.active >= 8 || this.entries.size >= 10_000) throw new ApiError(429, "rate_limit", "Too many login attempts; try again later");
-    const keys: [string, number][] = [[`ip:${ip}`, 30], [`user:${username}`, 10]];
-    for (const [key, limit] of keys) {
-      const entry = this.entries.get(key);
-      if (entry && entry.count >= limit) throw new ApiError(429, "rate_limit", "Too many login attempts; try again in 15 minutes");
-    }
-    for (const [key] of keys) {
-      const entry = this.entries.get(key) ?? { count: 0, until: now + 15 * 60_000 };
-      entry.count++;
-      this.entries.set(key, entry);
-    }
-    this.active++;
-    return () => { this.active--; };
-  }
-}
 export function createServer(config: Config, store: Store) {
-  const limiter = new LoginLimiter();
-  const secure = new URL(config.publicUrl).protocol === "https:";
-  const cookie = (token: string, clear = false) => `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${clear ? 0 : 2_592_000}${secure ? "; Secure" : ""}`;
   const server = nodeServer(async (req, res) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "no-referrer");
@@ -73,30 +48,12 @@ export function createServer(config: Config, store: Store) {
         if (origin !== undefined && origin !== config.publicUrl) throw new ApiError(403, "origin", "Untrusted request origin");
         if (req.method !== "GET" && (!origin || origin !== config.publicUrl))
           throw new ApiError(403, "origin", "Same-origin requests required for writes");
-        if (req.headers.authorization !== undefined) throw new ApiError(401, "auth", "Cookie authentication required");
-        if (path === "/api/info" && req.method === "GET") { json(res, 200, { service: "cproject-sync", version: 1 }); return; }
-        if (path === "/api/login" && req.method === "POST") {
-          const data = await body(req);
-          if (!record(data) || Object.keys(data).some(key => key !== "username" && key !== "password") || typeof data.username !== "string" || !/^[a-zA-Z0-9_.-]{1,64}$/.test(data.username) || typeof data.password !== "string" || Buffer.byteLength(data.password) > 1024) throw new ApiError(400, "validation", "Invalid login request");
-          const leave = limiter.enter(req.socket.remoteAddress ?? "unknown", data.username);
-          try {
-            const session = await store.login(data.username, data.password);
-            res.setHeader("Set-Cookie", cookie(session.token));
-            json(res, 200, { user: session.user });
-          } finally { leave(); }
-          return;
-        }
-        const token = req.headers.cookie?.split(";").map(s => s.trim()).find(s => s.startsWith(`${COOKIE}=`))?.slice(COOKIE.length + 1) ?? "";
-        const user = store.session(token);
-        // A cookie can change in another tab between loading a draft and saving it.
-        const expectedAccount = req.headers["x-cproject-account"];
-        if (expectedAccount !== undefined && expectedAccount !== user.id)
-          throw new ApiError(401, "account_changed", "The account changed in another tab. Sign in again.");
-        if (path === "/api/session" && req.method === "GET") json(res, 200, { user });
-        else if (path === "/api/logout" && req.method === "POST") { await body(req); store.logout(token); res.setHeader("Set-Cookie", cookie("", true)); json(res, 200, { ok: true }); }
-        else if (path === "/api/workspace" && req.method === "GET") json(res, 200, store.workspace(user.id));
-        else if (path === "/api/changes" && req.method === "GET") json(res, 200, store.changes(user.id));
-        else if (path === "/api/commit" && req.method === "POST") json(res, 200, store.commit(user.id, await body(req)));
+        if (req.headers["x-cproject-account"] !== undefined)
+          throw new ApiError(409, "protocol_changed", "This server now uses one shared workspace. Reload the site before continuing.");
+        if (path === "/api/info" && req.method === "GET") json(res, 200, { service: "cproject-sync", version: 2 });
+        else if (path === "/api/workspace" && req.method === "GET") json(res, 200, store.workspace());
+        else if (path === "/api/changes" && req.method === "GET") json(res, 200, store.changes());
+        else if (path === "/api/commit" && req.method === "POST") json(res, 200, store.commit(await body(req)));
         else throw new ApiError(404, "not_found", "API endpoint not found");
         return;
       }

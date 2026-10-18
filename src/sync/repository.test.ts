@@ -27,12 +27,9 @@ let directory: string;
 let store: Store;
 let server: Server;
 let transport: SyncTransport;
-let userId: string;
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "cproject-repository-"));
   store = new Store(directory);
-  const user = await store.provision("reader", "a-private-test-password");
-  userId = user.id;
   server = createServer(configFromEnv({}), store);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -40,16 +37,8 @@ beforeEach(async () => {
   if (!address || typeof address === "string") throw new Error("Missing test port");
   const origin = `http://127.0.0.1:${address.port}`;
   const fetchHTTP = globalThis.fetch;
-  const login = await fetchHTTP(`${origin}/api/login`, {
-    method: "POST",
-    headers: { Origin: "http://localhost:8787", "Content-Type": "application/json" },
-    body: JSON.stringify({ username: "reader", password: "a-private-test-password" }),
-  });
-  expect(login.status).toBe(200);
-  const cookie = login.headers.get("set-cookie")!.split(";")[0]!;
-  // Node has no browser cookie jar; keep the real HTTP path and supply its session cookie.
   vi.stubGlobal("fetch", (input: Parameters<typeof fetch>[0], init?: RequestInit) =>
-    fetchHTTP(input, { ...init, headers: { ...init?.headers, Origin: "http://localhost:8787", Cookie: cookie } }));
+    fetchHTTP(input, { ...init, headers: { ...init?.headers, Origin: "http://localhost:8787" } }));
   transport = new SyncTransport(origin);
 });
 afterEach(async () => {
@@ -83,11 +72,11 @@ describe("remote repository boundaries", () => {
     expect(firstDevice.snapshot.work_calendars).toEqual(untouchedCalendars);
     const history = await first.changes();
     expect(history[0]!.before).toMatchObject({ language: "zh-TW", notification_sound: false });
-    expect(store.workspace(userId).snapshot.settings).toMatchObject({ notification_sound: true });
+    expect(store.workspace().snapshot.settings).toMatchObject({ notification_sound: true });
     const localOnly = structuredClone(next);
     localOnly.settings.notification_sound = true;
     await first.commit(makeChanges(next, localOnly, v7()), localOnly.settings);
-    expect(store.workspace(userId).revision).toBe(1);
+    expect(store.workspace().revision).toBe(1);
     expect(firstDevice.snapshot.settings.notification_sound).toBe(true);
   });
   it("rejects stale writes and disallows mutation from a different calendar time zone", async () => {
@@ -101,8 +90,8 @@ describe("remote repository boundaries", () => {
     const overwritten = structuredClone(stale);
     overwritten.work_calendars[0]!.name = "Old draft";
     await expect(second.commit(makeChanges(stale, overwritten, v7()), null)).rejects.toMatchObject({ status: 409 });
-    expect(store.workspace(userId).snapshot.work_calendars[0]!.name).toBe("Updated elsewhere");
-    store.db.prepare("UPDATE accounts SET timezone=? WHERE id=?").run("Pacific/Kiritimati", userId);
+    expect(store.workspace().snapshot.work_calendars[0]!.name).toBe("Updated elsewhere");
+    store.db.prepare("UPDATE workspace SET timezone=? WHERE id=1").run("Pacific/Kiritimati");
     let warning: string | null = null;
     const traveling = new RemoteRepository(transport, new DeviceRepository(), (value) => { warning = value; });
     const readable = await traveling.load();
@@ -111,7 +100,7 @@ describe("remote repository boundaries", () => {
     const changed = structuredClone(readable);
     changed.work_calendars[0]!.name = "Wrong zone";
     await expect(traveling.commit(makeChanges(readable, changed, v7()), null)).rejects.toThrow("time zone");
-    expect(store.workspace(userId).revision).toBe(1);
+    expect(store.workspace().revision).toBe(1);
   });
 });
 
