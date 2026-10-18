@@ -6,6 +6,7 @@ import { sync, type SyncState } from "../sync/client";
 import { Dialog } from "../components/Editor";
 import { useUI } from "./ui";
 import { EntityActions, type ViewProps } from "./Projects";
+import { setThemePreference, useTheme, type ThemePreference } from "../theme";
 export function Reminders({ snapshot, run }: ViewProps) {
   const { t, i18n } = useTranslation();
   const set = useUI((s) => s.set);
@@ -118,6 +119,7 @@ export function Reminders({ snapshot, run }: ViewProps) {
 export function Settings({ snapshot, run }: ViewProps) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
+  const theme = useTheme();
   const [validation, setValidation] = useState("");
   const settings = snapshot.settings;
   async function exportFile() {
@@ -170,6 +172,17 @@ export function Settings({ snapshot, run }: ViewProps) {
               <option value="zh-TW">繁體中文</option>
               <option value="en">English</option>
               <option value="ja">日本語</option>
+            </select>
+          </label>
+          <label>
+            {t("appearance")}
+            <select
+              value={theme.preference}
+              onChange={(e) => setThemePreference(e.target.value as ThemePreference)}
+            >
+              <option value="system">{t("theme_system")}</option>
+              <option value="light">{t("theme_light")}</option>
+              <option value="dark">{t("theme_dark")}</option>
             </select>
           </label>
           {isDesktop && (["autostart", "close_to_tray", "notification_sound"] as const).map(

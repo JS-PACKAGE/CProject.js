@@ -9,6 +9,7 @@ import { Reminders, Settings, SyncAccess } from "./features/Settings";
 import { sync } from "./sync/client";
 import { useUI, type View } from "./features/ui";
 import "./i18n";
+import { toggleTheme, useTheme } from "./theme";
 const navigation: { view: View; icon: string }[] = [
   { view: "projects", icon: "◈" },
   { view: "calendar", icon: "▦" },
@@ -16,6 +17,16 @@ const navigation: { view: View; icon: string }[] = [
   { view: "reminders", icon: "◷" },
   { view: "settings", icon: "⚙" },
 ];
+function ThemeToggle() {
+  const { t } = useTranslation();
+  const { theme } = useTheme();
+  const label = t(theme === "dark" ? "switchToLight" : "switchToDark");
+  return (
+    <button className="quiet theme-toggle" onClick={toggleTheme} title={label} aria-label={label}>
+      {theme === "dark" ? "☀\uFE0E" : "☾"}
+    </button>
+  );
+}
 export default function App() {
   const { t, i18n } = useTranslation();
   const { view, editor, extension, set } = useUI();
@@ -95,6 +106,7 @@ export default function App() {
   if (!canShowWorkspace) {
     return (
       <div className="login-shell">
+        <ThemeToggle />
         <section className="panel login-panel">
           <h1>CProject</h1>
           <p className="muted">{t("tagline")}</p>
@@ -165,6 +177,7 @@ export default function App() {
                 aria-label={t("loading")}
               />
             )}
+            <ThemeToggle />
             <button
               className="quiet"
               disabled={mutationsDisabled}

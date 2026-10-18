@@ -3,5 +3,5 @@
   "identifier": "main",
   "description": "Main application window; all data writes use validated native commands.",
   "windows": ["main"],
-  "permissions": ["core:default", "notification:default", "notification:allow-request-permission", "notification:allow-is-permission-granted"]
+  "permissions": ["core:default", "core:window:allow-set-theme", "notification:default", "notification:allow-request-permission", "notification:allow-is-permission-granted"]
 }
