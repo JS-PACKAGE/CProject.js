@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Snapshot } from "./core/types";
-import { app, isDesktop } from "./data/app";
+import { app } from "./data/app";
 import { Editor } from "./components/Editor";
 import { Projects, Timeline, ExtendDialog } from "./features/Projects";
 import { Calendar } from "./features/Calendar";
@@ -227,7 +227,6 @@ export default function App() {
             </button>
           </div>
         </header>
-        {!isDesktop && syncState.mode === "local" && <div className="preview-banner">{t("preview")}</div>}
         {syncState.mode === "server" && (
           <div className="sync-banner" role="status">
             <span>{syncState.user?.username} · {t(`sync_${syncState.phase}`)}

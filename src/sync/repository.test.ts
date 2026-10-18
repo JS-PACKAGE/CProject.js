@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -33,15 +33,27 @@ beforeEach(async () => {
   store = new Store(directory);
   const user = await store.provision("reader", "a-private-test-password");
   userId = user.id;
-  const session = await store.login("reader", "a-private-test-password", "desktop");
   server = createServer(configFromEnv({}), store);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Missing test port");
-  transport = new SyncTransport(`http://127.0.0.1:${address.port}`, session.token);
+  const origin = `http://127.0.0.1:${address.port}`;
+  const fetchHTTP = globalThis.fetch;
+  const login = await fetchHTTP(`${origin}/api/login`, {
+    method: "POST",
+    headers: { Origin: "http://localhost:8787", "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "reader", password: "a-private-test-password" }),
+  });
+  expect(login.status).toBe(200);
+  const cookie = login.headers.get("set-cookie")!.split(";")[0]!;
+  // Node has no browser cookie jar; keep the real HTTP path and supply its session cookie.
+  vi.stubGlobal("fetch", (input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+    fetchHTTP(input, { ...init, headers: { ...init?.headers, Origin: "http://localhost:8787", Cookie: cookie } }));
+  transport = new SyncTransport(origin);
 });
 afterEach(async () => {
+  vi.unstubAllGlobals();
   if (server) {
     const { promise, resolve } = Promise.withResolvers<void>();
     server.close(() => resolve());
@@ -53,32 +65,30 @@ afterEach(async () => {
 });
 
 describe("remote repository boundaries", () => {
-  it("shares language without copying another device's startup or sound preferences", async () => {
+  it("shares language while keeping notification sound local to each browser", async () => {
     const firstDevice = new DeviceRepository();
-    firstDevice.snapshot.settings.autostart = true;
     firstDevice.snapshot.settings.notification_sound = false;
     const untouchedCalendars = structuredClone(firstDevice.snapshot.work_calendars);
     const first = new RemoteRepository(transport, firstDevice, () => {});
     const secondDevice = new DeviceRepository();
     const second = new RemoteRepository(transport, secondDevice, () => {});
     const before = await first.load();
-    expect(before.settings.autostart).toBe(true);
+    expect(before.settings.notification_sound).toBe(false);
     const next = structuredClone(before);
     next.settings.language = "ja";
-    next.settings.close_to_tray = false;
     await first.commit(makeChanges(before, next, v7()), next.settings);
     const received = await second.load();
-    expect(received.settings).toMatchObject({ language: "ja", autostart: false, close_to_tray: true, notification_sound: true });
-    expect(firstDevice.snapshot.settings).toMatchObject({ autostart: true, close_to_tray: false, notification_sound: false });
+    expect(received.settings).toMatchObject({ language: "ja", notification_sound: true });
+    expect(firstDevice.snapshot.settings).toMatchObject({ notification_sound: false });
     expect(firstDevice.snapshot.work_calendars).toEqual(untouchedCalendars);
     const history = await first.changes();
-    expect(history[0]!.before).toMatchObject({ language: "zh-TW", autostart: true, close_to_tray: false, notification_sound: false });
-    expect(store.workspace(userId).snapshot.settings).toMatchObject({ autostart: false, close_to_tray: true, notification_sound: true });
+    expect(history[0]!.before).toMatchObject({ language: "zh-TW", notification_sound: false });
+    expect(store.workspace(userId).snapshot.settings).toMatchObject({ notification_sound: true });
     const localOnly = structuredClone(next);
-    localOnly.settings.autostart = false;
+    localOnly.settings.notification_sound = true;
     await first.commit(makeChanges(next, localOnly, v7()), localOnly.settings);
     expect(store.workspace(userId).revision).toBe(1);
-    expect(firstDevice.snapshot.settings.autostart).toBe(false);
+    expect(firstDevice.snapshot.settings.notification_sound).toBe(true);
   });
   it("rejects stale writes and disallows mutation from a different calendar time zone", async () => {
     const first = new RemoteRepository(transport, new DeviceRepository(), () => {});

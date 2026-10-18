@@ -92,8 +92,6 @@ export interface Reminder extends Entity {
 }
 export interface Settings {
   language: Language;
-  autostart: boolean;
-  close_to_tray: boolean;
   notification_sound: boolean;
   default_reminder_offsets: number[];
 }

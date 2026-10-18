@@ -25,7 +25,6 @@ export function serverOrigin(value: string): string {
 export class SyncTransport {
   constructor(
     readonly origin: string,
-    private token: string | null,
     private onError: (error: SyncError) => void = () => {},
     private accountId?: string,
   ) {}
@@ -34,13 +33,12 @@ export class SyncTransport {
     try {
       const response = await fetch(`${this.origin}/api/${path}`, {
         method: body === undefined ? "GET" : "POST",
-        credentials: this.token ? "omit" : "same-origin",
+        credentials: "same-origin",
         redirect: "error",
         cache: "no-store",
         signal: AbortSignal.timeout(15_000),
         headers: {
           ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-          ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
           ...(this.accountId ? { "X-CProject-Account": this.accountId } : {}),
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),

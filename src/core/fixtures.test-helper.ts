@@ -105,8 +105,6 @@ export function snapshot(patch: Partial<Snapshot> = {}): Snapshot {
     reminders: [],
     settings: {
       language: "en",
-      autostart: false,
-      close_to_tray: true,
       notification_sound: true,
       default_reminder_offsets: [0, 60],
     },

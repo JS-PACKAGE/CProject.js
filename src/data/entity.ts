@@ -1,5 +1,5 @@
 import { v7 } from "uuid";
-import type { Entity, Snapshot, TableName } from "../core/types";
+import type { Entity, Settings, Snapshot, TableName } from "../core/types";
 export const tables: TableName[] = [
   "work_calendars",
   "weekday_rules",
@@ -13,6 +13,14 @@ export const tables: TableName[] = [
 export function entity(): Entity {
   return { id: v7(), version: 1, updated_at: Date.now(), deleted_at: null };
 }
+/** Project legacy desktop settings onto the web backup/storage contract. */
+export function webSettings(settings: Settings): Settings {
+  return {
+    language: settings.language,
+    notification_sound: settings.notification_sound,
+    default_reminder_offsets: settings.default_reminder_offsets,
+  };
+}
 export function emptySnapshot(): Snapshot {
   return {
     work_calendars: [],
@@ -25,8 +33,6 @@ export function emptySnapshot(): Snapshot {
     reminders: [],
     settings: {
       language: "zh-TW",
-      autostart: false,
-      close_to_tray: true,
       notification_sound: true,
       default_reminder_offsets: [1440, 120],
     },

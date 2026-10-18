@@ -1,6 +1,5 @@
-import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { Change, Entity, Settings, Snapshot } from "../../core/types";
-import { emptySnapshot } from "../entity";
+import { emptySnapshot, webSettings } from "../entity";
 
 export interface Repository {
   readonly refreshSchedules?: boolean;
@@ -8,31 +7,51 @@ export interface Repository {
   commit(changes: Change[], settings: Settings | null): Promise<void>;
   changes(): Promise<Change[]>;
 }
-export const isDesktop = isTauri();
-export class DesktopRepository implements Repository {
-  load(): Promise<Snapshot> {
-    return invoke("load_snapshot");
-  }
-  commit(changes: Change[], settings: Settings | null): Promise<void> {
-    return invoke("commit_changes", { changes, settings });
-  }
-  changes(): Promise<Change[]> {
-    return invoke("load_changes");
-  }
-}
 interface Stored {
   snapshot: Snapshot;
   changes: Change[];
 }
-/** Browser preview storage is isolated from the native application's SQLite database. */
+/** Persistent, origin-local browser workspace with atomic change history. */
 export class BrowserRepository implements Repository {
   private connection: Promise<IDBDatabase> | null = null;
   private db(): Promise<IDBDatabase> {
     if (this.connection) return this.connection;
     const { promise, resolve, reject } = Promise.withResolvers<IDBDatabase>();
-    const request = indexedDB.open("cproject-preview", 1);
-    request.onupgradeneeded = () => request.result.createObjectStore("state");
-    request.onsuccess = () => resolve(request.result);
+    // Keep the original database name so existing browser workspaces survive the cutover.
+    const request = indexedDB.open("cproject-preview", 2);
+    let blocked = false;
+    request.onblocked = () => {
+      blocked = true;
+      this.connection = null;
+      reject(new Error("Close other CProject tabs, then reload to upgrade browser storage."));
+    };
+    request.onupgradeneeded = (event) => {
+      if (event.oldVersion === 0) {
+        request.result.createObjectStore("state");
+        return;
+      }
+      const store = request.transaction!.objectStore("state");
+      const current = store.get("current");
+      current.onsuccess = () => {
+        const state = current.result as Stored | undefined;
+        if (!state) return;
+        state.snapshot.settings = webSettings(state.snapshot.settings);
+        for (const change of state.changes) {
+          if (change.table !== "settings") continue;
+          change.before = webSettings(change.before as Settings);
+          change.payload = webSettings(change.payload as Settings);
+        }
+        store.put(state, "current");
+      };
+    };
+    request.onsuccess = () => {
+      if (blocked) { request.result.close(); return; }
+      request.result.onversionchange = () => {
+        request.result.close();
+        this.connection = null;
+      };
+      resolve(request.result);
+    };
     request.onerror = () => {
       this.connection = null;
       reject(request.error);
@@ -109,7 +128,4 @@ export class BrowserRepository implements Repository {
       reject(failure ?? tx.error ?? new Error("Storage transaction aborted"));
     return promise;
   }
-}
-export function createRepository(): Repository {
-  return isDesktop ? new DesktopRepository() : new BrowserRepository();
 }

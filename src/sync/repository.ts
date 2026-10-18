@@ -5,9 +5,9 @@ import { makeChanges } from "../data/changeLog";
 import { validateSnapshot } from "../data/validation";
 import { SyncTransport } from "../data/transport";
 
-const deviceKeys = ["autostart", "close_to_tray", "notification_sound"] as const;
+const deviceKeys = ["notification_sound"] as const;
 export function sharedSettings(settings: Settings): Settings {
-  return { ...settings, autostart: false, close_to_tray: true, notification_sound: true };
+  return { ...settings, notification_sound: true };
 }
 
 export class RemoteRepository implements Repository {

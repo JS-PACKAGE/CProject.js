@@ -1,8 +1,3 @@
-import { listen } from "@tauri-apps/api/event";
-import {
-  isPermissionGranted,
-  requestPermission,
-} from "@tauri-apps/plugin-notification";
 import { v7 } from "uuid";
 import type {
   CalendarContext,
@@ -15,12 +10,11 @@ import type {
 } from "../core/types";
 import { reschedule, extendProject, buildReminders } from "../core/scheduler";
 import { workingMinutesBetween, expandEvents } from "../core/calendar";
-import { activeSnapshot, entity, initialSnapshot, tables } from "./entity";
+import { activeSnapshot, entity, initialSnapshot, tables, webSettings } from "./entity";
 import { makeChanges } from "./changeLog";
-import { createRepository, isDesktop } from "./repositories";
+import { BrowserRepository } from "./repositories";
 import type { Repository } from "./repositories";
 import { validateSnapshot } from "./validation";
-export { isDesktop };
 
 export class Application {
   private current: Snapshot | null = null;
@@ -80,12 +74,6 @@ export class Application {
       window.addEventListener("focus", () => {
         void this.refresh().catch(console.error);
       });
-      if (isDesktop) {
-        await listen("reminders-changed", () => {
-          void this.refresh().catch(console.error);
-        });
-        if (!(await isPermissionGranted())) await requestPermission();
-      }
     }
     return activeSnapshot(this.current!);
   }
@@ -292,9 +280,6 @@ export class Application {
       const next = structuredClone(before);
       next.settings = { ...next.settings, ...patch };
       validateSnapshot(next);
-      if (isDesktop) {
-        if (!(await isPermissionGranted())) await requestPermission();
-      }
       await this.persist(before, next, true);
     });
   }
@@ -366,6 +351,7 @@ export class Application {
       if (expectedSnapshot && JSON.stringify(before) !== JSON.stringify(expectedSnapshot))
         throw new Error("The destination changed. Refresh before uploading local data.");
       const next = structuredClone(parsed.snapshot);
+      next.settings = webSettings(next.settings);
       await this.persist(before, next, true);
     });
   }
@@ -409,5 +395,5 @@ export class Application {
     });
   }
 }
-export const localRepository = createRepository();
+export const localRepository = new BrowserRepository();
 export const app = new Application(localRepository);

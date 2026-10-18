@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Bell, CircleCheck, Clock, Download, Plus, RefreshCw, Undo2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Language, Reminder } from "../core/types";
-import { app, isDesktop } from "../data/app";
+import { app } from "../data/app";
 import { sync, type SyncState } from "../sync/client";
 import { Dialog } from "../components/Editor";
 import { useUI } from "./ui";
@@ -21,7 +21,7 @@ export function Reminders({ snapshot, run }: ViewProps) {
       <div className="section-heading">
         <div>
           <h2>{t("reminders")}</h2>
-          <p className="muted">{t(isDesktop ? "reminderHint" : "webNotificationLimit")}</p>
+          <p className="muted">{t("webNotificationLimit")}</p>
         </div>
         <button
           className="primary"
@@ -139,7 +139,7 @@ export function Settings({ snapshot, run }: ViewProps) {
     <div className="settings-layout">
       <section className="panel">
         <h2>{t("settings")}</h2>
-        <p className="muted">{t(isDesktop ? "settingsHint" : "webNotificationLimit")}</p>
+        <p className="muted">{t("settingsHint")}</p>
         <form
           key={JSON.stringify(settings)}
           onSubmit={(e) => {
@@ -158,11 +158,7 @@ export function Settings({ snapshot, run }: ViewProps) {
             void run(() =>
               app.updateSettings({
                 language: String(f.get("language")) as Language,
-                ...(isDesktop ? {
-                  autostart: f.has("autostart"),
-                  close_to_tray: f.has("close_to_tray"),
-                  notification_sound: f.has("notification_sound"),
-                } : {}),
+                notification_sound: f.has("notification_sound"),
                 default_reminder_offsets: offsets,
               }),
             ).finally(() => setBusy(false));
@@ -187,18 +183,10 @@ export function Settings({ snapshot, run }: ViewProps) {
               <option value="dark">{t("theme_dark")}</option>
             </select>
           </label>
-          {isDesktop && (["autostart", "close_to_tray", "notification_sound"] as const).map(
-            (key) => (
-              <label className="check settings-toggle" key={key}>
-                <input
-                  name={key}
-                  type="checkbox"
-                  defaultChecked={settings[key]}
-                />
-                {t(key)}
-              </label>
-            ),
-          )}
+          <label className="check settings-toggle">
+            <input name="notification_sound" type="checkbox" defaultChecked={settings.notification_sound} />
+            {t("notification_sound")}
+          </label>
           <label>
             {t("offsets")}
             <input
@@ -257,7 +245,6 @@ export function SyncAccess({ state, run }: {
   run: ViewProps["run"];
 }) {
   const { t, i18n } = useTranslation();
-  const [endpoint, setEndpoint] = useState(state.serverUrl || window.location.origin);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   return (
@@ -278,19 +265,15 @@ export function SyncAccess({ state, run }: {
           </div>
           <p className="muted">{t("uploadLocalHint")}</p>
         </>
-      ) : (
+      ) : state.hosted ? (
         <>
           <p className="muted">{t("syncLoginHint")}</p>
-          {!isDesktop && !state.hosted && <p className="muted">{t("webServerHint")}</p>}
           <form onSubmit={(event) => {
             event.preventDefault();
             const secret = password;
             setPassword("");
-            void run(() => sync.login(isDesktop ? endpoint : window.location.origin, username.trim(), secret));
+            void run(() => sync.login(window.location.origin, username.trim(), secret));
           }}>
-            {isDesktop && <label>{t("serverUrl")}
-              <input type="url" required value={endpoint} onChange={(event) => setEndpoint(event.target.value)} placeholder="https://planner.example.com" autoComplete="url" />
-            </label>}
             <label>{t("username")}
               <input required name="username" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" autoCapitalize="none" spellCheck={false} />
             </label>
@@ -300,9 +283,8 @@ export function SyncAccess({ state, run }: {
             <button className="primary" disabled={state.busy}>{t(state.busy ? "loading" : "signIn")}</button>
           </form>
         </>
-      )}
+      ) : <p className="muted">{t("webServerHint")}</p>}
       {state.error && <p className="error" role="alert">{state.error}</p>}
-      {!state.hosted && state.mode === "server" && <button disabled={state.busy} onClick={() => void run(() => sync.useLocal())}>{t("useLocal")}</button>}
     </div>
   );
 }

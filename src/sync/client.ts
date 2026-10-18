@@ -1,6 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { app, isDesktop, localRepository } from "../data/app";
+import { app, localRepository } from "../data/app";
 import { serverOrigin, SyncError, SyncTransport } from "../data/transport";
 import { RemoteRepository } from "./repository";
 
@@ -46,17 +44,6 @@ class SyncController {
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden && this.state.user) void this.refresh().catch(() => {});
     });
-    if (isDesktop) {
-      await listen<string>("sync-error", ({ payload }) => {
-        if (this.state.mode === "server" && this.state.user)
-          this.publish({ error: payload });
-      });
-      const saved = localStorage.getItem("cproject-sync-server");
-      this.publish(saved ? {
-        mode: "server", phase: "signed_out", serverUrl: saved,
-      } : { phase: "ready" });
-      return;
-    }
     const origin = window.location.origin;
     let hosted = localStorage.getItem("cproject-hosted-sync") === "true";
     try {
@@ -73,9 +60,9 @@ class SyncController {
       localStorage.setItem("cproject-hosted-sync", "true");
       this.publish({ mode: "server", hosted: true, serverUrl: serverOrigin(origin), phase: "signed_out" });
       if (localStorage.getItem("cproject-session-blocked") === "true") return;
-      const transport = new SyncTransport(origin, null);
+      const transport = new SyncTransport(origin);
       const { user } = await transport.request<{ user: User }>("session");
-      await this.activate(origin, user, null);
+      await this.activate(origin, user);
     } catch (error) {
       // An unavailable hosted API must never silently open an unrelated local workspace.
       this.publish({
@@ -98,10 +85,10 @@ class SyncController {
       });
     }
   }
-  private async activate(origin: string, user: User, token: string | null): Promise<void> {
+  private async activate(origin: string, user: User): Promise<void> {
     if (!user || typeof user.id !== "string" || typeof user.username !== "string")
       throw new Error("Invalid sign-in response.");
-    const transport = new SyncTransport(origin, token, (error) => this.fail(error, repository), user.id);
+    const transport = new SyncTransport(origin, (error) => this.fail(error, repository), user.id);
     const repository = new RemoteRepository(transport, localRepository, (warning) => {
       if (this.remote === repository && this.state.user)
         this.publish({ phase: "ready", lastSyncedAt: Date.now(), error: warning });
@@ -114,8 +101,6 @@ class SyncController {
     await app.setRepository(repository);
     try {
       await app.load();
-      if (isDesktop) await invoke("configure_sync", { url: origin, token });
-      localStorage.setItem("cproject-sync-server", origin);
       localStorage.removeItem("cproject-session-blocked");
       this.publish({ phase: "ready" });
       this.timer = window.setInterval(() => {
@@ -131,16 +116,15 @@ class SyncController {
   async login(serverUrl: string, username: string, password: string): Promise<void> {
     if (this.state.busy) throw new Error("Another connection operation is in progress.");
     const origin = serverOrigin(serverUrl);
-    if (!isDesktop && origin !== window.location.origin)
+    if (origin !== window.location.origin)
       throw new Error("Open the server's web address to sign in. Browser sync uses the same origin.");
     this.publish({ busy: true, phase: "connecting", error: null });
     try {
-      const transport = new SyncTransport(origin, null);
-      const result = await transport.request<{ user: User; token?: string }>("login", {
-        username: username.trim(), password, client: isDesktop ? "desktop" : "web",
+      const transport = new SyncTransport(origin);
+      const result = await transport.request<{ user: User }>("login", {
+        username: username.trim(), password,
       });
-      if (isDesktop && !result.token) throw new Error("The server did not return a desktop session.");
-      await this.activate(origin, result.user, result.token ?? null);
+      await this.activate(origin, result.user);
     } catch (error) {
       this.publish({ phase: "signed_out", user: null, error: error instanceof Error ? error.message : String(error) });
       throw error;
@@ -157,25 +141,12 @@ class SyncController {
     this.remote?.stop();
     this.stopPolling();
     try {
-      if (isDesktop) await invoke("configure_sync", { url: null, token: null });
       if (this.transport) await this.transport.request("logout", {});
       this.transport = null;
     } catch (error) {
       this.publish({ error: "Signed out on this device, but the server could not confirm session revocation. Reconnect and sign out again." });
       throw error;
     } finally { this.publish({ busy: false }); }
-  }
-  async useLocal(): Promise<void> {
-    if (this.state.hosted) throw new Error("This website uses server accounts. Local-only mode is available in the desktop application.");
-    if (this.state.busy) throw new Error("Another connection operation is in progress.");
-    if (this.transport) await this.logout();
-    this.remote?.stop();
-    this.remote = null;
-    this.stopPolling();
-    await app.setRepository(localRepository);
-    localStorage.removeItem("cproject-sync-server");
-    this.publish({ mode: "local", phase: "ready", user: null, error: null, lastSyncedAt: null });
-    await app.refresh();
   }
   refresh(): Promise<void> {
     if (this.state.mode === "server" && !this.state.user) return Promise.resolve();

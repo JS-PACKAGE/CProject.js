@@ -268,9 +268,7 @@ export function validateSnapshot(value: unknown): asserts value is Snapshot {
     "Invalid language setting",
   );
   requireValue(
-    typeof settings.autostart === "boolean" &&
-      typeof settings.close_to_tray === "boolean" &&
-      typeof settings.notification_sound === "boolean",
+    typeof settings.notification_sound === "boolean",
     "Invalid application settings",
   );
   requireValue(

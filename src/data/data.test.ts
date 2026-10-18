@@ -167,7 +167,7 @@ describe("backup and mutation invariants", () => {
     });
     expect(() => validateSnapshot(snapshot)).toThrow("does not exist");
   });
-  it("rejects custom reminder identifiers that the native receiver cannot decode", () => {
+  it("rejects malformed reminder entity identifiers", () => {
     const snapshot = initialSnapshot();
     const reminder = {
       ...entity(), entity_type: "custom" as const, entity_id: "custom",

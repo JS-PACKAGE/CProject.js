@@ -1,6 +1,4 @@
 import { useSyncExternalStore } from "react";
-import { isTauri } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 
 export type ThemePreference = "system" | "light" | "dark";
 export type Theme = "light" | "dark";
@@ -9,12 +7,11 @@ interface ThemeState {
   theme: Theme;
 }
 
-// Device-local like autostart: the key and resolution must match public/theme-init.js.
+// Device-local: the key and resolution must match public/theme-init.js.
 const STORAGE_KEY = "cproject-theme";
 const BAR_COLORS: Record<Theme, string> = { light: "#f6f7fb", dark: "#121319" };
 const media = window.matchMedia("(prefers-color-scheme: dark)");
 const listeners = new Set<() => void>();
-const desktop = isTauri();
 
 function storedPreference(): ThemePreference {
   try {
@@ -35,7 +32,6 @@ function resolve(preference: ThemePreference): ThemeState {
 let state = resolve(storedPreference());
 
 function apply(next: ThemeState, initial = false) {
-  const nativeChanged = initial ? next.preference !== "system" : next.preference !== state.preference;
   state = next;
   const root = document.documentElement;
   if (!initial) {
@@ -45,8 +41,6 @@ function apply(next: ThemeState, initial = false) {
   }
   root.dataset.theme = next.theme;
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", BAR_COLORS[next.theme]);
-  // Native title bars follow the OS unless told otherwise; null hands control back to the system.
-  if (desktop && nativeChanged) void getCurrentWindow().setTheme(next.preference === "system" ? null : next.preference);
   listeners.forEach((listener) => listener());
 }
 
