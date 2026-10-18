@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+src-tauri/target/
+src-tauri/gen/
+.vite/
+*.log
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+server-data/
