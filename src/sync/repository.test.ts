@@ -54,7 +54,7 @@ afterEach(async () => {
 });
 
 describe("remote repository boundaries", () => {
-  it("shares language while keeping notification sound local to each browser", async () => {
+  it("shares language and week start while keeping notification sound local to each browser", async () => {
     const firstDevice = new DeviceRepository();
     firstDevice.snapshot.settings.notification_sound = false;
     const untouchedCalendars = structuredClone(firstDevice.snapshot.work_calendars);
@@ -65,19 +65,23 @@ describe("remote repository boundaries", () => {
     expect(before.settings.notification_sound).toBe(false);
     const next = structuredClone(before);
     next.settings.language = "ja";
+    next.settings.week_start = 0;
     await first.commit(makeChanges(before, next, v7()), next.settings);
     const received = await second.load();
-    expect(received.settings).toMatchObject({ language: "ja", notification_sound: true });
+    expect(received.settings).toMatchObject({ language: "ja", week_start: 0, notification_sound: true });
     expect(firstDevice.snapshot.settings).toMatchObject({ notification_sound: false });
     expect(firstDevice.snapshot.work_calendars).toEqual(untouchedCalendars);
     const history = await first.changes();
-    expect(history[0]!.before).toMatchObject({ language: "zh-TW", notification_sound: false });
-    expect(store.workspace().snapshot.settings).toMatchObject({ notification_sound: true });
+    expect(history[0]!.before).toMatchObject({ language: "zh-TW", week_start: 1, notification_sound: false });
+    expect(store.workspace().snapshot.settings).toMatchObject({ week_start: 0, notification_sound: true });
     const localOnly = structuredClone(next);
     localOnly.settings.notification_sound = true;
     await first.commit(makeChanges(next, localOnly, v7()), localOnly.settings);
     expect(store.workspace().revision).toBe(1);
     expect(firstDevice.snapshot.settings.notification_sound).toBe(true);
+    expect((await first.load()).settings.week_start).toBe(0);
+    expect((await second.load()).settings.week_start).toBe(0);
+    expect(store.workspace().snapshot.settings.week_start).toBe(0);
   });
   it("rejects stale writes and disallows mutation from a different calendar time zone", async () => {
     const first = new RemoteRepository(transport, new DeviceRepository(), () => {});

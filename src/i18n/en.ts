@@ -125,6 +125,7 @@ const messages = {
   holiday: "Holiday",
   makeup_workday: "Make-up workday",
   language: "Language",
+  weekStart: "First day of the week",
   appearance: "Appearance (this device)",
   theme_system: "Match system",
   theme_light: "Light",

@@ -17,7 +17,8 @@ export function Calendar({ snapshot, run }: ViewProps) {
     calendarMode === "month"
       ? new Date(current.getFullYear(), current.getMonth(), 1)
       : new Date(dayStart(date));
-  const start = addDays(+first, -first.getDay());
+  const weekStart = snapshot.settings.week_start;
+  const start = addDays(+first, -((first.getDay() - weekStart + 7) % 7));
   const count = calendarMode === "month" ? 42 : 7;
   const events = useMemo(() => {
     try {
@@ -261,7 +262,7 @@ export function Calendar({ snapshot, run }: ViewProps) {
             </div>
             {snapshot.weekday_rules
               .filter((r) => r.calendar_id === chosen.id)
-              .sort((a, b) => a.weekday - b.weekday)
+              .sort((a, b) => (a.weekday - weekStart + 7) % 7 - (b.weekday - weekStart + 7) % 7)
               .map((rule) => (
                 <div key={rule.id} className="rule-row">
                   <div>

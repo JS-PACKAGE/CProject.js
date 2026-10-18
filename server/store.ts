@@ -16,7 +16,7 @@ export const LOG_BYTES = 40 * 1024 * 1024;
 const LOG_ENTRIES = 100_000;
 export function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 function cloudSettings(value: unknown): asserts value is Settings {
-  if (!record(value) || value.notification_sound !== true || Object.keys(value).some(key => !["language", "notification_sound", "default_reminder_offsets"].includes(key)))
+  if (!record(value) || value.notification_sound !== true || !Number.isInteger(value.week_start) || (value.week_start as number) < 0 || (value.week_start as number) > 6 || Object.keys(value).some(key => !["language", "notification_sound", "default_reminder_offsets", "week_start"].includes(key)))
     invalid("Only shared web settings can be synchronized");
 }
 export class Store {
@@ -42,8 +42,36 @@ export class Store {
   private migrate(legacyAccount?: string): void {
     this.transaction(() => {
       const version = this.db.prepare("PRAGMA user_version").get() as { user_version: number };
-      if (version.user_version === 2) return;
-      if (version.user_version > 2) throw new Error("Workspace database was created by a newer server");
+      if (version.user_version === 3) return;
+      if (version.user_version > 3) throw new Error("Workspace database was created by a newer server");
+      const normalize = (value: unknown): Settings => {
+        if (!record(value) || typeof value.language !== "string" || !Array.isArray(value.default_reminder_offsets) ||
+          (Object.hasOwn(value, "week_start") && (!Number.isInteger(value.week_start) || (value.week_start as number) < 0 || (value.week_start as number) > 6)))
+          throw new Error("Invalid persisted settings");
+        return { ...webSettings({ ...value, week_start: Object.hasOwn(value, "week_start") ? value.week_start : 1 } as unknown as Settings), notification_sound: true };
+      };
+      const normalizeHistory = (history: { body: string }[]) => {
+        for (const row of history) {
+          const change = JSON.parse(row.body) as Change;
+          if (change.table === "settings") {
+            change.before = normalize(change.before);
+            change.payload = normalize(change.payload);
+            row.body = JSON.stringify(change);
+          }
+        }
+      };
+      if (version.user_version === 2) {
+        const { snapshot } = this.workspace();
+        snapshot.settings = normalize(snapshot.settings);
+        validateSnapshot(snapshot);
+        const history = this.db.prepare("SELECT seq,body FROM changes ORDER BY seq").all() as { seq: number; body: string }[];
+        normalizeHistory(history);
+        const update = this.db.prepare("UPDATE changes SET body=? WHERE seq=?");
+        for (const row of history) update.run(row.body, row.seq);
+        this.db.prepare("UPDATE workspace SET snapshot=?,log_bytes=?,log_count=? WHERE id=1").run(JSON.stringify(snapshot), history.reduce((sum, row) => sum + Buffer.byteLength(row.body) + 1, 0), history.length);
+        this.db.exec("PRAGMA user_version=3");
+        return;
+      }
       const legacy = this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='accounts'").get();
       type LegacyAccount = { id: string; username: string; snapshot: string; timezone: string; revision: number; log_bytes: number; log_count: number };
       const accounts = legacy ? this.db.prepare("SELECT id,username,snapshot,timezone,revision,log_bytes,log_count FROM accounts ORDER BY username").all() as LegacyAccount[] : [];
@@ -52,23 +80,11 @@ export class Store {
         throw new Error("CPROJECT_LEGACY_ACCOUNT does not name an existing legacy account; no workspace data was migrated");
       if (accounts.length > 1 && !selected)
         throw new Error("Multiple legacy accounts found. Set CPROJECT_LEGACY_ACCOUNT to the username whose workspace should become shared; all legacy workspaces and history will be archived");
-      const normalize = (value: unknown): Settings => {
-        if (!record(value) || typeof value.language !== "string" || !Array.isArray(value.default_reminder_offsets))
-          throw new Error("Invalid persisted settings");
-        return { ...webSettings(value as unknown as Settings), notification_sound: true };
-      };
       const snapshot = selected ? JSON.parse(selected.snapshot) as Snapshot : initialSnapshot();
       snapshot.settings = normalize(snapshot.settings);
       validateSnapshot(snapshot);
       const history = selected ? this.db.prepare("SELECT seq,id,ts,body FROM changes WHERE user_id=? ORDER BY seq").all(selected.id) as { seq: number; id: string; ts: number; body: string }[] : [];
-      for (const row of history) {
-        const change = JSON.parse(row.body) as Change;
-        if (change.table === "settings") {
-          change.before = normalize(change.before);
-          change.payload = normalize(change.payload);
-          row.body = JSON.stringify(change);
-        }
-      }
+      normalizeHistory(history);
       if (legacy) {
         // Archive exact original data, without retaining credentials or a live account path.
         this.db.exec(`CREATE TABLE archived_accounts(id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, snapshot TEXT NOT NULL, timezone TEXT NOT NULL, revision INTEGER NOT NULL, log_bytes INTEGER NOT NULL, log_count INTEGER NOT NULL);
@@ -84,7 +100,7 @@ export class Store {
       this.db.prepare("INSERT INTO workspace VALUES(1,?,?,?,?,?)").run(JSON.stringify(snapshot), selected?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, selected?.revision ?? 0, history.reduce((sum, row) => sum + Buffer.byteLength(row.body) + 1, 0), history.length);
       const insert = this.db.prepare("INSERT INTO changes(seq,id,ts,body) VALUES(?,?,?,?)");
       for (const row of history) insert.run(row.seq, row.id, row.ts, row.body);
-      this.db.exec("PRAGMA user_version=2");
+      this.db.exec("PRAGMA user_version=3");
     });
   }
   workspace(): Workspace {

@@ -130,6 +130,22 @@ describe("standalone shared sync", () => {
     changes[0]!.before = before.snapshot.settings;
     expect((await post("/api/commit", { base_revision: 0, changes, settings: next.settings })).status).toBe(200);
   });
+  it("rejects missing or invalid week starts without erasing shared preferences", async () => {
+    const before = await workspace();
+    const sunday = structuredClone(before.snapshot);
+    sunday.settings.week_start = 0;
+    expect((await post("/api/commit", { base_revision: 0, changes: makeChanges(before.snapshot, sunday, device), settings: sunday.settings })).status).toBe(200);
+    const persisted = await workspace();
+    for (const value of [undefined, null, -1, 7, 1.5, "1", true]) {
+      const settings = { ...sunday.settings, language: "en", week_start: value };
+      const change = { id: v7(), device_id: device, ts: Date.now(), table: "settings", row_id: "settings", op: "upsert", before: sunday.settings, payload: settings };
+      expect((await post("/api/commit", { base_revision: 1, changes: [change], settings })).status).toBe(400);
+      expect(await workspace()).toEqual(persisted);
+      const validSettings = { ...sunday.settings, language: "en" };
+      expect((await post("/api/commit", { base_revision: 1, changes: [{ ...change, before: settings, payload: validSettings }], settings: validSettings })).status).toBe(400);
+      expect(await workspace()).toEqual(persisted);
+    }
+  });
   it("records reminder delivery through revisioned commits", async () => {
     const before = await workspace();
     const next = structuredClone(before.snapshot);
@@ -240,7 +256,10 @@ async function legacyDatabase(names: string[], version = 0): Promise<{ path: str
       const changes = makeChanges(initial, snapshot, device);
       changes.forEach((change, i) => { change.ts = 2000 - i * 1000; });
       const id = v7();
-      const legacySettings = (settings: unknown) => ({ ...(settings as object), autostart: true, close_to_tray: false, notification_sound: false });
+      const legacySettings = (settings: unknown) => {
+        const { week_start: _weekStart, ...rest } = settings as Record<string, unknown>;
+        return { ...rest, autostart: true, close_to_tray: false, notification_sound: false };
+      };
       const rawSnapshot = JSON.stringify({ ...snapshot, settings: legacySettings(snapshot.settings) });
       const bodies = changes.map(change => JSON.stringify(change.table === "settings" ? { ...change, before: legacySettings(change.before), payload: legacySettings(change.payload) } : change));
       db.prepare("INSERT INTO accounts VALUES(?,?,?,?,?,?,?,?,?)").run(id, username, "obsolete-salt", "obsolete-hash", rawSnapshot, "Etc/GMT+3", 7, bodies.reduce((sum, body) => sum + Buffer.byteLength(body) + 1, 0), bodies.length);
@@ -258,6 +277,88 @@ function logicalDatabase(path: string) {
   } finally { db.close(); }
 }
 describe("shared workspace migration", () => {
+  it("creates new databases at schema 3 with Monday as the default", () => {
+    expect(store.db.prepare("PRAGMA user_version").get()).toEqual({ user_version: 3 });
+    expect(store.workspace().snapshot.settings.week_start).toBe(1);
+  });
+  it.each([undefined, 0])("upgrades schema 2 settings and history without changing archives (week start %s)", async weekStart => {
+    const { path } = await legacyDatabase(["alice"]);
+    const seeded = new Store(path);
+    const legacySettings = (value: unknown) => {
+      const { week_start: _weekStart, ...rest } = value as Record<string, unknown>;
+      return weekStart === undefined ? rest : { ...rest, week_start: weekStart };
+    };
+    const legacySnapshot = seeded.workspace().snapshot;
+    const rawSnapshot = JSON.stringify({ ...legacySnapshot, settings: legacySettings(legacySnapshot.settings) });
+    const rows = seeded.db.prepare("SELECT seq,id,ts,body FROM changes ORDER BY seq").all();
+    for (const row of rows) {
+      const change = JSON.parse(row.body as string) as Change;
+      if (change.table === "settings") {
+        seeded.db.prepare("UPDATE changes SET body=? WHERE seq=?").run(JSON.stringify({ ...change, before: legacySettings(change.before), payload: legacySettings(change.payload) }), row.seq!);
+      }
+    }
+    seeded.db.prepare("UPDATE workspace SET snapshot=?,log_bytes=0,log_count=0").run(rawSnapshot);
+    seeded.db.exec("PRAGMA user_version=2");
+    const archives = {
+      accounts: seeded.db.prepare("SELECT * FROM archived_accounts ORDER BY username").all(),
+      changes: seeded.db.prepare("SELECT * FROM archived_changes ORDER BY seq").all(),
+    };
+    const ordered = seeded.db.prepare("SELECT seq,id,ts FROM changes ORDER BY seq").all();
+    seeded.close();
+    const migrated = new Store(path);
+    let updated: Workspace;
+    let history: Change[];
+    try {
+      expect(migrated.db.prepare("PRAGMA user_version").get()).toEqual({ user_version: 3 });
+      expect(migrated.workspace()).toEqual({ snapshot: { ...legacySnapshot, settings: { ...legacySnapshot.settings, week_start: weekStart ?? 1 } }, revision: 7, timezone: "Etc/GMT+3" });
+      const changes = migrated.changes();
+      for (const change of changes.filter(change => change.table === "settings")) {
+        expect(change.before).toMatchObject({ week_start: weekStart ?? 1 });
+        expect(change.payload).toMatchObject({ week_start: weekStart ?? 1 });
+      }
+      expect(migrated.db.prepare("SELECT seq,id,ts FROM changes ORDER BY seq").all()).toEqual(ordered);
+      expect(migrated.db.prepare("SELECT log_bytes,log_count FROM workspace").get()).toEqual({ log_bytes: changes.reduce((sum, change) => sum + Buffer.byteLength(JSON.stringify(change)) + 1, 0), log_count: changes.length });
+      const before = migrated.workspace().snapshot;
+      const next = structuredClone(before);
+      next.settings.week_start = weekStart === 0 ? 1 : 0;
+      expect(migrated.commit({ base_revision: 7, changes: makeChanges(before, next, device), settings: next.settings })).toEqual({ revision: 8 });
+      updated = migrated.workspace();
+      history = migrated.changes();
+    } finally { migrated.close(); }
+    const reopened = new Store(path);
+    try {
+      expect(reopened.workspace()).toEqual(updated!);
+      expect(reopened.changes()).toEqual(history!);
+      expect(reopened.db.prepare("SELECT * FROM archived_accounts ORDER BY username").all()).toEqual(archives.accounts);
+      expect(reopened.db.prepare("SELECT * FROM archived_changes ORDER BY seq").all()).toEqual(archives.changes);
+    } finally { reopened.close(); }
+  });
+  it.each([null, -1, 7, 1.5, "1", true])("rolls back schema 2 migration for invalid present week start %s", async value => {
+    const { path } = await legacyDatabase(["alice"]);
+    const seeded = new Store(path);
+    const snapshot = seeded.workspace().snapshot;
+    const validSnapshot = JSON.stringify(snapshot);
+    const originalHistory = seeded.db.prepare("SELECT * FROM changes ORDER BY seq").all();
+    const originalArchives = seeded.db.prepare("SELECT * FROM archived_accounts ORDER BY username").all();
+    seeded.db.exec("PRAGMA user_version=2");
+    for (const target of ["snapshot", "before", "payload"]) {
+      const rawSnapshot = target === "snapshot" ? JSON.stringify({ ...snapshot, settings: { ...snapshot.settings, week_start: value } }) : validSnapshot;
+      seeded.db.prepare("UPDATE workspace SET snapshot=?").run(rawSnapshot);
+      if (target !== "snapshot") {
+        const row = originalHistory.find(row => (JSON.parse(row.body as string) as Change).table === "settings")!;
+        const change = JSON.parse(row.body as string) as Change;
+        seeded.db.prepare("UPDATE changes SET body=? WHERE seq=?").run(JSON.stringify({ ...change, [target]: { ...(change[target as "before" | "payload"] as object), week_start: value } }), row.seq!);
+      }
+      const history = seeded.db.prepare("SELECT * FROM changes ORDER BY seq").all();
+      expect(() => new Store(path)).toThrow("Invalid persisted settings");
+      expect(seeded.db.prepare("PRAGMA user_version").get()).toEqual({ user_version: 2 });
+      expect(seeded.db.prepare("SELECT snapshot FROM workspace").get()?.snapshot).toBe(rawSnapshot);
+      expect(seeded.db.prepare("SELECT * FROM changes ORDER BY seq").all()).toEqual(history);
+      expect(seeded.db.prepare("SELECT * FROM archived_accounts ORDER BY username").all()).toEqual(originalArchives);
+      for (const row of originalHistory) seeded.db.prepare("UPDATE changes SET body=? WHERE seq=?").run(row.body!, row.seq!);
+    }
+    seeded.close();
+  });
   it("seeds an empty legacy database without inventing an account", async () => {
     const { path } = await legacyDatabase([]);
     const migrated = new Store(path);
@@ -320,6 +421,17 @@ describe("shared workspace migration", () => {
     const { path } = await legacyDatabase(["alice"]);
     const db = new DatabaseSync(join(path, "sync.sqlite"));
     db.prepare("UPDATE accounts SET snapshot=?").run(JSON.stringify({ ...initialSnapshot(), settings: {} }));
+    db.close();
+    const original = logicalDatabase(path);
+    expect(() => new Store(path)).toThrow("Invalid persisted settings");
+    expect(logicalDatabase(path)).toEqual(original);
+  });
+  it.each([null, -1, 7, 1.5, "1", true])("rejects invalid legacy account week start %s without archiving or changing data", async value => {
+    const { path } = await legacyDatabase(["alice"], 1);
+    const db = new DatabaseSync(join(path, "sync.sqlite"));
+    const row = db.prepare("SELECT snapshot FROM accounts").get()!;
+    const snapshot = JSON.parse(row.snapshot as string) as Snapshot;
+    db.prepare("UPDATE accounts SET snapshot=?").run(JSON.stringify({ ...snapshot, settings: { ...snapshot.settings, week_start: value } }));
     db.close();
     const original = logicalDatabase(path);
     expect(() => new Store(path)).toThrow("Invalid persisted settings");

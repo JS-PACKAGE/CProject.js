@@ -17,6 +17,7 @@ export function entity(): Entity {
 export function webSettings(settings: Settings): Settings {
   return {
     language: settings.language,
+    week_start: settings.week_start === undefined ? 1 : settings.week_start,
     notification_sound: settings.notification_sound,
     default_reminder_offsets: settings.default_reminder_offsets,
   };
@@ -33,6 +34,7 @@ export function emptySnapshot(): Snapshot {
     reminders: [],
     settings: {
       language: "zh-TW",
+      week_start: 1,
       notification_sound: true,
       default_reminder_offsets: [1440, 120],
     },

@@ -18,7 +18,7 @@ export class BrowserRepository implements Repository {
     if (this.connection) return this.connection;
     const { promise, resolve, reject } = Promise.withResolvers<IDBDatabase>();
     // Keep the original database name so existing browser workspaces survive the cutover.
-    const request = indexedDB.open("cproject-preview", 2);
+    const request = indexedDB.open("cproject-preview", 3);
     let blocked = false;
     request.onblocked = () => {
       blocked = true;

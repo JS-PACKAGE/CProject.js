@@ -92,6 +92,7 @@ export interface Reminder extends Entity {
 }
 export interface Settings {
   language: Language;
+  week_start: number;
   notification_sound: boolean;
   default_reminder_offsets: number[];
 }

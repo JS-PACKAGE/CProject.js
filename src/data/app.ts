@@ -365,6 +365,13 @@ export class Application {
       };
       if (parsed.format !== "cproject-js" || parsed.version !== 1)
         throw new Error("Unsupported backup format");
+      const incoming = parsed.snapshot;
+      if (incoming !== null && typeof incoming === "object" && "settings" in incoming) {
+        const settings = incoming.settings;
+        if (settings !== null && typeof settings === "object" && !Array.isArray(settings) &&
+            (!("week_start" in settings) || settings.week_start === undefined))
+          Object.assign(settings, { week_start: 1 });
+      }
       validateSnapshot(parsed.snapshot);
       const before = await this.repository.load();
       if (expectedSnapshot && JSON.stringify(before) !== JSON.stringify(expectedSnapshot))

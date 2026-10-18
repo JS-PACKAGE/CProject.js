@@ -108,11 +108,12 @@ export function Reminders({ snapshot, run }: ViewProps) {
   );
 }
 export function Settings({ snapshot, run, notifications }: ViewProps & { notifications: BrowserNotifications }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [busy, setBusy] = useState(false);
   const theme = useTheme();
   const [validation, setValidation] = useState("");
   const settings = snapshot.settings;
+  const weekdayFormat = new Intl.DateTimeFormat(i18n.language, { weekday: "long" });
   async function exportFile() {
     const json = await app.exportJSON();
     const url = URL.createObjectURL(
@@ -147,6 +148,7 @@ export function Settings({ snapshot, run, notifications }: ViewProps & { notific
             void run(() =>
               app.updateSettings({
                 language: String(f.get("language")) as Language,
+                week_start: Number(f.get("week_start")),
                 notification_sound: f.has("notification_sound"),
                 default_reminder_offsets: offsets,
               }),
@@ -159,6 +161,16 @@ export function Settings({ snapshot, run, notifications }: ViewProps & { notific
               <option value="zh-TW">繁體中文</option>
               <option value="en">English</option>
               <option value="ja">日本語</option>
+            </select>
+          </label>
+          <label>
+            {t("weekStart")}
+            <select name="week_start" defaultValue={settings.week_start}>
+              {[1, 2, 3, 4, 5, 6, 0].map((weekday) => (
+                <option key={weekday} value={weekday}>
+                  {weekdayFormat.format(new Date(2024, 0, 7 + weekday))}
+                </option>
+              ))}
             </select>
           </label>
           <label>

@@ -91,6 +91,20 @@ describe("transaction change log", () => {
   });
 });
 describe("backup and mutation invariants", () => {
+  it("defaults fresh workspaces to Monday and requires an explicit valid week start", () => {
+    const snapshot = initialSnapshot();
+    expect(snapshot.settings.week_start).toBe(1);
+    for (let weekday = 0; weekday < 7; weekday++) {
+      snapshot.settings.week_start = weekday;
+      expect(() => validateSnapshot(snapshot)).not.toThrow();
+    }
+    for (const value of [undefined, null, "1", true, -1, 7, 1.5, NaN, Infinity]) {
+      Object.assign(snapshot.settings, { week_start: value });
+      expect(() => validateSnapshot(snapshot)).toThrow();
+    }
+    Reflect.deleteProperty(snapshot.settings, "week_start");
+    expect(() => validateSnapshot(snapshot)).toThrow();
+  });
   it("rejects cross-project task hierarchy and a third task level", () => {
     const { snapshot, task, project } = fixture();
     const another = { ...project, ...entity(), name: "Other" };

@@ -88,17 +88,63 @@ describe("browser reminder delivery", () => {
 describe("desktop backup migration", () => {
   it("imports existing workspace data and sound preferences without obsolete native settings", async () => {
     const repository = new MemoryRepository();
+    repository.snapshot.settings.week_start = 0;
     const app = new Application(repository, "browser-one");
     const backup = structuredClone(repository.snapshot);
     backup.work_calendars[0]!.name = "Migrated calendar";
     backup.settings.notification_sound = false;
     const legacy = { ...backup, settings: { ...backup.settings, autostart: true, close_to_tray: true } };
+    Reflect.deleteProperty(legacy.settings, "week_start");
     await app.importJSON(JSON.stringify({ format: "cproject-js", version: 1, snapshot: legacy }));
     const exported = JSON.parse(await app.exportJSON());
     expect(exported.snapshot.work_calendars[0].name).toBe("Migrated calendar");
-    expect(exported.snapshot.settings).toEqual(backup.settings);
+    expect(exported.snapshot.settings).toEqual({ ...backup.settings, week_start: 1 });
     await app.undo();
     expect(repository.snapshot.work_calendars[0]!.name).toBe("Standard");
     expect(repository.snapshot.settings.notification_sound).toBe(true);
+    expect(repository.snapshot.settings.week_start).toBe(0);
+    expect(repository.history.filter(change => change.table === "settings")[0]).toMatchObject({
+      before: { week_start: 0 },
+      payload: { week_start: 1 },
+    });
+  });
+  it("preserves Sunday imports and restores them when a later settings edit is undone", async () => {
+    const repository = new MemoryRepository();
+    const app = new Application(repository, "browser-one");
+    const backup = structuredClone(repository.snapshot);
+    backup.settings.week_start = 0;
+    await app.importJSON(JSON.stringify({ format: "cproject-js", version: 1, snapshot: backup }));
+    expect(repository.snapshot.settings.week_start).toBe(0);
+    expect(repository.history.filter(change => change.table === "settings")[0]).toMatchObject({
+      before: { week_start: 1 },
+      payload: { week_start: 0 },
+    });
+    await app.updateSettings({ week_start: 6 });
+    expect(repository.snapshot.settings.week_start).toBe(6);
+    await app.undo();
+    expect(repository.snapshot.settings.week_start).toBe(0);
+  });
+  it.each([null, "1", true, -1, 7, 1.5])("rejects an invalid imported week start (%s) without changing data or history", async weekStart => {
+    const repository = new MemoryRepository();
+    const app = new Application(repository, "browser-one");
+    const before = structuredClone(repository.snapshot);
+    const backup = structuredClone(before);
+    Object.assign(backup.settings, { week_start: weekStart });
+    await expect(app.importJSON(JSON.stringify({
+      format: "cproject-js", version: 1, snapshot: backup,
+    }))).rejects.toThrow();
+    expect(repository.snapshot).toEqual(before);
+    expect(repository.history).toEqual([]);
+  });
+  it.each([undefined, null, "1", true, -1, 7, 1.5])("rejects an invalid settings edit (%s) without losing the saved preference", async weekStart => {
+    const repository = new MemoryRepository();
+    repository.snapshot.settings.week_start = 0;
+    const app = new Application(repository, "browser-one");
+    const before = structuredClone(repository.snapshot);
+    await expect(app.updateSettings({
+      week_start: weekStart as number,
+    })).rejects.toThrow();
+    expect(repository.snapshot).toEqual(before);
+    expect(repository.history).toEqual([]);
   });
 });

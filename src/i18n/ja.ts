@@ -126,6 +126,7 @@ const messages: Record<keyof typeof en, string> = {
   holiday: "休日",
   makeup_workday: "振替出勤日",
   language: "言語",
+  weekStart: "週の開始曜日",
   appearance: "外観（このデバイス）",
   theme_system: "システムに合わせる",
   theme_light: "ライト",

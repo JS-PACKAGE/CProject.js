@@ -268,6 +268,12 @@ export function validateSnapshot(value: unknown): asserts value is Snapshot {
     "Invalid language setting",
   );
   requireValue(
+    Number.isInteger(settings.week_start) &&
+      settings.week_start >= 0 &&
+      settings.week_start <= 6,
+    "Invalid week start setting",
+  );
+  requireValue(
     typeof settings.notification_sound === "boolean",
     "Invalid application settings",
   );
