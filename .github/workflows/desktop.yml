@@ -1,0 +1,131 @@
+name: Desktop builds
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      signed:
+        description: Build distribution-signed installers (requires platform signing secrets)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos
+          - os: windows-latest
+            platform: windows
+    runs-on: ${{ matrix.os }}
+    env:
+      SIGNED: ${{ github.event_name == 'workflow_dispatch' && inputs.signed && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - run: npm ci
+      - run: npm test
+      - name: Rust behavior tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+      - name: Configure Apple signing and notarization
+        if: env.SIGNED == 'true' && matrix.platform == 'macos'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          for key in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY KEYCHAIN_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!key}" ]; then echo "::error::Missing required secret: $key"; exit 1; fi
+          done
+          CERTIFICATE_PATH="$RUNNER_TEMP/cproject-signing.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/cproject-signing.keychain-db"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          rm "$CERTIFICATE_PATH"
+      - name: Configure Windows Authenticode signing
+        if: env.SIGNED == 'true' && matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (!$env:WINDOWS_CERTIFICATE -or !$env:WINDOWS_CERTIFICATE_PASSWORD) { throw 'Missing WINDOWS_CERTIFICATE or WINDOWS_CERTIFICATE_PASSWORD signing secret' }
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'cproject-signing.pfx'
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $certificate = Import-PfxCertificate -FilePath $certificatePath -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          Remove-Item $certificatePath
+          $config = @{ bundle = @{ windows = @{ certificateThumbprint = $certificate.Thumbprint; digestAlgorithm = 'sha256'; timestampUrl = 'http://timestamp.digicert.com' } } }
+          $configPath = Join-Path $env:RUNNER_TEMP 'cproject-signing.json'
+          $config | ConvertTo-Json -Depth 8 | Set-Content $configPath
+          "SIGNING_CONFIG=$configPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Build unsigned installers
+        if: env.SIGNED != 'true'
+        run: npm run tauri -- build
+      - name: Build signed and notarized macOS installers
+        if: env.SIGNED == 'true' && matrix.platform == 'macos'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run tauri -- build
+      - name: Build signed Windows installers
+        if: env.SIGNED == 'true' && matrix.platform == 'windows'
+        shell: pwsh
+        run: npm run tauri -- build --config "$env:SIGNING_CONFIG"
+      - name: Verify signed macOS bundle
+        if: env.SIGNED == 'true' && matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          codesign --verify --deep --strict --verbose=2 src-tauri/target/release/bundle/macos/CProject.app
+          spctl --assess --type execute --verbose=2 src-tauri/target/release/bundle/macos/CProject.app
+      - name: Verify Windows installer signatures
+        if: env.SIGNED == 'true' && matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $installers = Get-ChildItem src-tauri/target/release/bundle -Recurse -File | Where-Object { $_.Extension -in '.exe', '.msi' }
+          if (!$installers) { throw 'No Windows installers were produced' }
+          foreach ($file in $installers) {
+            if ((Get-AuthenticodeSignature $file.FullName).Status -ne 'Valid') { throw "Invalid signature: $($file.Name)" }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cproject-${{ matrix.platform }}-${{ env.SIGNED == 'true' && 'signed' || 'unsigned' }}
+          path: |
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/macos/*.app
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
+      - name: Remove temporary Apple keychain
+        if: always() && env.SIGNED == 'true' && matrix.platform == 'macos'
+        shell: bash
+        run: security delete-keychain "$RUNNER_TEMP/cproject-signing.keychain-db" || true
