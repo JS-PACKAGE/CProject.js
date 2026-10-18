@@ -1,17 +1,27 @@
 # CProject.js
 
-Calendar + Project：**純網頁應用**，使用 React + TypeScript，搭配可直接執行的 Node.js／SQLite 同步後端。電腦與手機都透過瀏覽器使用，**不需要 Docker、Rust、桌面安裝包或程式簽章**。也可不啟動後端，使用瀏覽器本機模式。
+Calendar + Project：**需要後端的純網頁應用**，使用 React + TypeScript，搭配可直接執行的 Node.js／SQLite 後端。電腦與手機都透過瀏覽器連接同一共享工作區，**不需要 Docker、Rust、桌面安裝包或程式簽章**。不提供獨立本機模式、離線工作區或連線失敗後的本機回退。
 
 ## 開發與執行
 
-需要 Node.js **22.13+**（建議使用受支援的 LTS）與 npm。網頁需支援 IndexedDB、`Promise.withResolvers` 的近期瀏覽器（Safari 17.4+）。通知功能另受瀏覽器支援與授權限制。
+需要 Node.js **22.13+**（建議使用受支援的 LTS）與 npm，以及支援 `Promise.withResolvers` 的近期瀏覽器（Safari 17.4+）。通知功能另受瀏覽器支援與授權限制。
+
+先安裝依賴，於第一個終端啟動 API：
 
 ```sh
 npm ci
+CPROJECT_PORT=18787 CPROJECT_PUBLIC_URL=http://127.0.0.1:1420 CPROJECT_DATA_DIR="$HOME/.local/share/cproject-sync" TZ=Asia/Taipei npm run server
+```
+
+第二個終端啟動網頁：
+
+```sh
 npm run dev
 ```
 
-開啟 **http://127.0.0.1:1420**，使用瀏覽器本機模式。資料存放在目前來源的 IndexedDB，不會自動同步到後端或其他裝置。保留原本開發埠，避免既有本機瀏覽器工作空間因換網址而看似消失。
+開啟 **http://127.0.0.1:1420**。Vite 將同源 `/api` 請求轉送到 **http://127.0.0.1:18787**，保留瀏覽器 Origin；後端的 `CPROJECT_PUBLIC_URL` 因此必須設為網頁網址，而非 API 監聽網址。請勿改用 `localhost:1420`，否則寫入會被來源檢查拒絕。開發及預覽維持前端埠 `1420`，API 範例使用 `18787` 避開已被佔用的 `8787`；後端預設埠仍為 `8787`，沒有自動改埠。
+
+若要使用其他 API 埠，後端設定 `CPROJECT_PORT=其他埠`，前端使用 `CPROJECT_DEV_API_TARGET=http://127.0.0.1:其他埠 npm run dev`。這是開發／預覽程序的環境變數，不是瀏覽器端 API 網址；正式建置一律使用同源 `/api`。不需也不應放寬後端 Origin 檢查或啟用跨來源 API。
 
 ```sh
 npm run check
@@ -20,34 +30,34 @@ npm run build
 npm run preview
 ```
 
-`dist/` 可部署至靜態主機作為本機模式；請使用 HTTPS（loopback 開發網址除外）。本機模式不需要帳號，資料依瀏覽器、使用者設定檔及網址分開，清除網站資料會移除工作空間，請定期匯出 JSON。未實作離線網頁快取：即使資料保存在本機，首次載入或重新載入仍需要網站可達。
+預覽同樣使用 **http://127.0.0.1:1420** 及上述 API 代理，需要保持第一個終端的後端運作，並先停止開發伺服器以釋放 `1420`。若 API 使用其他埠，也要在 `npm run preview` 前設定相同的 `CPROJECT_DEV_API_TARGET`。
 
-**需要跨裝置同步時，請啟動下方後端，並直接開啟後端網址**。前端與 `/api` 必須同源；開發伺服器及任意靜態主機不會自動連到另一個後端。
+`dist/` **不能單獨提供可用的工作區**。正式部署需同時提供 Node.js 後端及同源 `/api`，建議由後端直接提供建置後的網頁。網頁未實作離線快取，載入及修改都需要網站與後端可達；連線失敗只提供重試，不會建立另一份本機工作區。
 
-## 自架同步版（不使用 Docker）
+## 自架網頁服務（不使用 Docker）
 
 後端使用**單一共享工作區，不設帳號、密碼或登入驗證**。任何可連到網站的人都能讀取、修改、匯出及取代這份資料。公開部署前，請在反向代理加上存取控制，或限制在 VPN／可信任網路內；HTTPS 與 Origin 檢查不等於使用者驗證。
 
-### 本機試用
+### 單機託管試用
 
 ```sh
 npm ci
 npm run build
 export CPROJECT_DATA_DIR="$HOME/.local/share/cproject-sync"
 export TZ=Asia/Taipei
-npm start
+CPROJECT_PORT=18787 CPROJECT_PUBLIC_URL=http://localhost:18787 npm start
 ```
 
-開啟 **http://localhost:8787** 就會直接載入共享工作區，不需建立帳號。`npm run server` 也可啟動相同服務。
+開啟 **http://localhost:18787** 就會直接載入共享工作區，不需建立帳號。`npm run server` 也可啟動相同服務。這裡由後端同時提供網頁與 API，不需要 Vite 或開發代理。
 
-請使用與 `CPROJECT_PUBLIC_URL` 相同的網址；例如預設值為 `http://localhost:8787`，不要改用 `127.0.0.1` 操作，否則來源檢查會拒絕寫入。`localhost` 只代表目前裝置，**手機不能用這個網址連到電腦**。
+請使用與 `CPROJECT_PUBLIC_URL` 相同的網址；此範例為 `http://localhost:18787`，不要改用 `127.0.0.1` 操作，否則來源檢查會拒絕寫入。`localhost` 只代表目前裝置，**手機不能用這個網址連到電腦**。
 
 ### 手機／外網使用
 
 1. 在常駐主機安裝 Node.js，將專案放到例如 `/opt/cproject`，執行 `npm ci && npm run build`。
 2. 使用獨立、非 root 的作業系統服務帳號；建立可供該帳號讀寫的資料目錄，例如 `/var/lib/cproject`。
-3. 設定 `CPROJECT_PUBLIC_URL=https://planner.example.com`、`CPROJECT_DATA_DIR=/var/lib/cproject`、`TZ=Asia/Taipei`，以服務帳號啟動後端。將範例網域改成自己的。
-4. 在後端前方配置 HTTPS 反向代理及適合的存取限制。後端預設只監聽 `127.0.0.1:8787`，不要直接公開此 HTTP 埠。網頁與 `/api` 必須走同一網域，存取限制也必須同時保護兩者。
+3. 設定 `CPROJECT_PORT=18787`、`CPROJECT_PUBLIC_URL=https://planner.example.com`、`CPROJECT_DATA_DIR=/var/lib/cproject`、`TZ=Asia/Taipei`，以服務帳號啟動後端。將範例網域改成自己的。
+4. 在後端前方配置 HTTPS 反向代理及適合的存取限制。此範例後端只監聽 `127.0.0.1:18787`，不要直接公開此 HTTP 埠。網頁與 `/api` 必須走同一網域，存取限制也必須同時保護兩者。
 5. 電腦與手機都開啟相同 HTTPS 網址，直接使用**同一共享工作區**。應用程式不提供個別使用者權限或私人工作區。
 
 Caddy HTTPS 轉送範例（**本段未包含存取驗證**，僅適用已另行限制存取的環境；需要自行安裝 Caddy、設定 DNS，並讓網域與憑證驗證所需的網路連線可達）：
@@ -55,7 +65,7 @@ Caddy HTTPS 轉送範例（**本段未包含存取驗證**，僅適用已另行�
 ```caddyfile
 planner.example.com {
     encode zstd gzip
-    reverse_proxy 127.0.0.1:8787
+    reverse_proxy 127.0.0.1:18787
 }
 ```
 
@@ -72,7 +82,7 @@ User=cproject
 WorkingDirectory=/opt/cproject
 Environment=NODE_ENV=production
 Environment=CPROJECT_HOST=127.0.0.1
-Environment=CPROJECT_PORT=8787
+Environment=CPROJECT_PORT=18787
 Environment=CPROJECT_PUBLIC_URL=https://planner.example.com
 Environment=CPROJECT_DATA_DIR=/var/lib/cproject
 Environment=TZ=Asia/Taipei
@@ -100,18 +110,17 @@ journalctl -u cproject
 
 - 前景每 10 秒更新，也會於重新連線、回到畫面及手動重新整理時更新。修改必須連到後端；斷線後目前畫面與開啟的編輯草稿保留，但不能送出。**不是離線編輯佇列**，重載網頁後需要重新連線。
 - 每次提交使用工作區版本及資料 before-image 檢查，排程連動與刪除同一交易寫入。遇到衝突會拒絕整筆交易；重新整理後重新開啟編輯器，再套用仍需要的修改。逾時時可能已提交，先刷新確認，不要直接重送。
-- 本機資料不自動覆蓋後端。先從本機模式匯出備份，再開啟同步網站並匯入 JSON。切換網址或裝置時也使用 JSON 搬移；瀏覽器無法讀取另一個來源的 IndexedDB。
-- 「上傳本機資料」僅適用於**目前來源**曾存有本機工作空間的情況，例如由靜態模式升級成同網址的同步網站。此入口只接受後端版本 0 的全新工作區，原本 IndexedDB 保留。需要刻意取代既有共享資料時，使用有確認提示的 JSON 匯入；這會影響所有訪客。
-- 語言、每週起始日及預設提醒提前量同步；音效及外觀是裝置設定，不會由另一裝置覆蓋。開機自啟、系統匣與關窗常駐設定已移除。
+- 不再提供讀取或「上傳本機資料」入口，也不自動將舊資料覆蓋後端。需要搬移時，使用先前匯出的 JSON 備份，在共享網站的設定頁匯入；匯入會取代目前共享資料並影響所有訪客，請先備份後端。
+- 語言、每週起始日及預設提醒提前量同步；音效及外觀只儲存在目前來源的裝置設定，不會由另一裝置覆蓋。JSON 匯出／匯入仍保留音效設定；外觀只保留於本裝置，不包含在 JSON 中。開機自啟、系統匣與關窗常駐設定已移除。
 - 工作時間使用工作區建立時保存的 IANA 時區。首次啟動時設定正確 `TZ`；裝置需使用相同時區才能修改，以免跨時區重新排程偏移。不同時區仍可讀取，但會提示並拒絕修改；顯示日期依裝置當地時間呈現。
 - 網頁自動連接同源共享 API，不使用應用程式帳密、session cookie 或 bearer token。連線失敗時可重試，不會悄悄改用另一份本機資料。
 
 ### 從舊桌面／網頁版本升級
 
 - **先備份**。既有桌面 SQLite 不會被網頁讀取或刪除。在舊應用程式匯出 JSON，再於網頁的「設定 → 匯入 JSON」搬入；支援原本 `cproject-js` version 1 備份，忽略已移除的自啟與關窗設定。macOS 舊資料仍位於 `~/Library/Application Support/dev.cproject.desktop/cproject.db`。
-- 同來源的既有瀏覽器資料庫會自動升級至 version 3，保留工作空間與異動紀錄；沿用歷史名稱 `cproject-preview`，不是另開空白資料庫。如果升級被舊分頁阻擋，關閉其他 CProject 分頁後重新載入。
+- 歷史瀏覽器 IndexedDB（`cproject-preview`）**原樣保留、不開啟、不升級、不刪除**；新版不再使用它作為工作區或設定儲存。若尚未匯出舊資料，請保留原本瀏覽器設定檔及來源，不要清除網站資料；需要透過可讀取該資料的舊版另行匯出 JSON，再於新版匯入。瀏覽器無法讀取另一來源的 IndexedDB。
 - 升級同步後端前，**停止舊服務並備份完整資料庫**，不要同時執行新舊後端。首次啟動新版會以單一交易遷移至 schema v3：沒有舊帳號時建立新工作區，只有一個舊帳號時沿用其資料、版本、時區與完整異動紀錄。
-- 舊瀏覽器資料、後端 schema v2 及 JSON 備份若缺少每週起始日，會補為週一，設定歷史也會同步遷移；已指定的週日等有效選擇會保留。此設定僅控制行事曆顯示順序，不改變工作日定義或重複事件規則。
+- 後端 schema v2 及舊 JSON 備份若缺少每週起始日，會補為週一，設定歷史也會同步遷移；已指定的週日等有效選擇會保留。此設定僅控制行事曆顯示順序，不改變工作日定義或重複事件規則。
 - 若有多個舊帳號，啟動會停止並要求明確選擇；設定 `CPROJECT_LEGACY_ACCOUNT=原帳號名稱` 後再啟動。未指定或名稱錯誤不會變更舊資料。這只決定首次遷移的來源，不是登入設定；完成遷移後不再用它切換資料。
 - 所有舊帳號的原始快照及歷史（含選中的帳號）保存在 `archived_accounts`、`archived_changes`，不合併、不對 API 開放。管理者可查詢 `SELECT id,username,snapshot,timezone,revision FROM archived_accounts`，並依 `user_id` 查詢 `archived_changes`、以 `seq` 排序取回歷史。未選中資料需由管理者另行匯出；不要把匯入誤認為自動合併。
 - 舊密碼雜湊、salt 及 session 資料不再保留於新 schema，舊登入介面也已移除。SQLite 舊頁面、WAL 與升級前備份仍應視為敏感資料，這不是安全抹除保證。舊分頁若仍傳送帳號標頭會被拒絕；請重新載入網頁使用新版共享 API。
@@ -142,17 +151,17 @@ journalctl -u cproject
 - 工作空間開啟且就緒時約每 15 秒檢查，也會在頁面重新取得焦點時檢查到期提醒。通知文字依工作空間語言顯示，派送成功後才回寫 `fired_at`。支援 Service Worker 時使用其通知 API；通知點擊會聚焦網站。
 - **沒有 Web Push、背景排程或關窗常駐**。關閉、休眠或背景節流後不保證即時通知；手機通知支援另取決於平台政策。Service Worker 僅處理通知顯示與點擊，不快取網站、不在背景輪詢後端。重新開啟且工作空間就緒後會處理尚未派送的到期提醒。
 - `fired_at` 表示瀏覽器通知 API 接受派送，**不保證作業系統實際顯示**。勿擾模式、通知權限與音效仍由瀏覽器及系統控制。支援 Web Locks 時同來源分頁協調派送；跨裝置競爭、派送後斷線或崩潰仍可能重複通知，不提供 exactly-once 保證。
-- 提醒預先計算 366 天，每日換日及視窗取得焦點時刷新。同步版時區不同時不重算排程，且拒絕修改。
-- UI 只呼叫 Repository／application service；所有實體使用 UUID v7、UTC epoch ms、版本及軟刪除。IndexedDB／後端 SQLite 都將每次變更與異動紀錄放在同一交易，版本衝突不會部分提交。
-- 本機模式與伺服器共享工作區分開儲存。所有連到同一伺服器的裝置共用資料；未提供使用者權限隔離或資料庫加密。
+- 提醒預先計算 366 天，每日換日及視窗取得焦點時刷新。裝置與工作區時區不同時不重算排程，且拒絕修改。
+- UI 只呼叫 Repository／application service；所有實體使用 UUID v7、UTC epoch ms、版本及軟刪除。後端 SQLite 將每次變更與異動紀錄放在同一交易，版本衝突不會部分提交。
+- 所有連到同一伺服器的裝置共用工作區資料；未提供使用者權限隔離或資料庫加密。瀏覽器只以輕量儲存保留裝置音效／外觀設定，不保存可離線修改的工作區。
 
 ## 建置與架構
 
-`.github/workflows/web.yml` 執行型別檢查、測試覆蓋率及網頁建置，產出 `cproject-web` artifact（`dist/`）。不再建置 macOS／Windows 安裝包，也不需要簽章 secrets。同步部署除了前端產物，還需要專案中的 Node.js 後端與 runtime dependencies。
+`.github/workflows/web.yml` 執行型別檢查、測試覆蓋率及網頁建置，產出 `cproject-web` artifact（`dist/`）。不再建置 macOS／Windows 安裝包，也不需要簽章 secrets。部署除了前端產物，還需要專案中的 Node.js 後端與 runtime dependencies，不能只部署 artifact 作為獨立應用。
 
 - `src/core/`：純函式工作日曆、RRULE、依賴圖、進度、排程與提醒。
-- `src/data/`：型別驗證、IndexedDB Repository、交易 change log、備份與復原、提醒狀態回寫。
-- `src/sync/`：同源共享工作區連線、HTTP Repository、自動刷新與本機資料搬移。
+- `src/data/`：型別驗證、application service、備份與復原、輕量裝置設定、提醒狀態回寫。
+- `src/sync/`：同源共享工作區連線、HTTP Repository 與自動刷新。
 - `server/`：Node.js HTTP／靜態網頁、SQLite 單一工作區與原子交易、舊資料遷移與封存。
 - `src/features/`、`src/components/`：專案、月週行事曆、拖曳時間軸、提醒、設定與瀏覽器通知生命週期。
 - `public/notification-worker.js`：通知顯示支援與點擊處理。
