@@ -247,7 +247,7 @@ export default function App() {
             </button>
           </div>
         )}
-        <div className="content" aria-busy={pending > 0}>
+        <div className="content" key={view} aria-busy={pending > 0}>
           {view === "settings" && <section className="panel sync-settings"><SyncAccess state={syncState} run={run} /></section>}
           {visibleSnapshot ? (
             <fieldset className="workspace-features" key={identity}

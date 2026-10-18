@@ -465,6 +465,7 @@ main {
 }
 .content {
   padding: 28px 34px;
+  animation: view-in 0.24s ease-out;
 }
 .preview-banner {
   background: var(--accent-softer);
@@ -1165,9 +1166,15 @@ dialog {
   box-shadow: var(--highlight), var(--shadow-dialog);
   color: var(--text);
 }
+dialog[open] {
+  animation: dialog-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
 dialog::backdrop {
   background: var(--overlay);
   backdrop-filter: blur(4px);
+}
+dialog[open]::backdrop {
+  animation: fade-in 0.2s ease-out;
 }
 .dialog-heading {
   display: flex;
@@ -1240,6 +1247,23 @@ legend {
 }
 .dialog-actions .primary {
   min-width: 105px;
+}
+@keyframes view-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
 }
 @keyframes spin {
   to {
@@ -1514,7 +1538,8 @@ legend {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  ::backdrop {
     animation: none !important;
     transition: none !important;
   }
