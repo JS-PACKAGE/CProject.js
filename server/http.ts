@@ -44,10 +44,6 @@ export function createServer(config: Config, store: Store) {
       const path = decodeURIComponent(rawPath);
       if (path === "/api" || path.startsWith("/api/")) {
         res.setHeader("Cache-Control", "no-store");
-        const origin = req.headers.origin;
-        if (origin !== undefined && origin !== config.publicUrl) throw new ApiError(403, "origin", "Untrusted request origin");
-        if (req.method !== "GET" && (!origin || origin !== config.publicUrl))
-          throw new ApiError(403, "origin", "Same-origin requests required for writes");
         if (req.headers["x-cproject-account"] !== undefined)
           throw new ApiError(409, "protocol_changed", "This server now uses one shared workspace. Reload the site before continuing.");
         if (path === "/api/info" && req.method === "GET") json(res, 200, { service: "cproject-sync", version: 2 });

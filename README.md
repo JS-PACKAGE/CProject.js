@@ -10,7 +10,7 @@ Calendar + Project：**需要後端的純網頁應用**，使用 React + TypeScr
 
 ```sh
 npm ci
-CPROJECT_PORT=18787 CPROJECT_PUBLIC_URL=http://127.0.0.1:1420 CPROJECT_DATA_DIR="$HOME/.local/share/cproject-sync" TZ=Asia/Taipei npm run server
+CPROJECT_PORT=18787 CPROJECT_DATA_DIR="$HOME/.local/share/cproject-sync" TZ=Asia/Taipei npm run server
 ```
 
 第二個終端啟動網頁：
@@ -19,9 +19,9 @@ CPROJECT_PORT=18787 CPROJECT_PUBLIC_URL=http://127.0.0.1:1420 CPROJECT_DATA_DIR=
 npm run dev
 ```
 
-開啟 **http://127.0.0.1:1420**。Vite 將同源 `/api` 請求轉送到 **http://127.0.0.1:18787**，保留瀏覽器 Origin；後端的 `CPROJECT_PUBLIC_URL` 因此必須設為網頁網址，而非 API 監聽網址。請勿改用 `localhost:1420`，否則寫入會被來源檢查拒絕。開發及預覽維持前端埠 `1420`，API 範例使用 `18787` 避開已被佔用的 `8787`；後端預設埠仍為 `8787`，沒有自動改埠。
+開啟 **http://127.0.0.1:1420**（也可使用 `localhost:1420`）。Vite 將同源 `/api` 請求轉送到 **http://127.0.0.1:18787**；後端不限制請求的 Origin，不需設定公開網址。開發及預覽維持前端埠 `1420`，API 範例使用 `18787` 避開已被佔用的 `8787`；後端預設埠仍為 `8787`，沒有自動改埠。
 
-若要使用其他 API 埠，後端設定 `CPROJECT_PORT=其他埠`，前端使用 `CPROJECT_DEV_API_TARGET=http://127.0.0.1:其他埠 npm run dev`。這是開發／預覽程序的環境變數，不是瀏覽器端 API 網址；正式建置一律使用同源 `/api`。不需也不應放寬後端 Origin 檢查或啟用跨來源 API。
+若要使用其他 API 埠，後端設定 `CPROJECT_PORT=其他埠`，前端使用 `CPROJECT_DEV_API_TARGET=http://127.0.0.1:其他埠 npm run dev`。這是開發／預覽程序的環境變數，不是瀏覽器端 API 網址；正式建置一律使用同源 `/api`，未開放 CORS。
 
 ```sh
 npm run check
@@ -36,7 +36,7 @@ npm run preview
 
 ## 自架網頁服務（不使用 Docker）
 
-後端使用**單一共享工作區，不設帳號、密碼或登入驗證**。任何可連到網站的人都能讀取、修改、匯出及取代這份資料。公開部署前，請在反向代理加上存取控制，或限制在 VPN／可信任網路內；HTTPS 與 Origin 檢查不等於使用者驗證。
+後端使用**單一共享工作區，不設帳號、密碼或登入驗證，也不限制請求 Origin**。任何可連到網站的人都能讀取、修改、匯出及取代這份資料。公開部署前，請在反向代理加上存取控制，或限制在 VPN／可信任網路內；HTTPS 不等於使用者驗證。
 
 ### 啟動腳本
 
@@ -52,7 +52,7 @@ npm run preview
 CPROJECT_PORT=18788 CPROJECT_DATA_DIR="$HOME/.local/share/cproject-sync" ./start.sh
 ```
 
-未指定 `CPROJECT_PUBLIC_URL` 時，網址會隨埠號變為 `http://localhost:埠號`。外網部署請明確設定 HTTPS 的 `CPROJECT_PUBLIC_URL`，其餘後端環境變數照常生效；腳本不會自動讀取 `.env`、更換被佔用的埠或啟動 Vite。
+本機網址會隨埠號變為 `http://localhost:埠號`。外網部署請透過 HTTPS 反向代理提供網頁及同源 `/api`，無須在後端設定網域；腳本不會自動讀取 `.env`、更換被佔用的埠或啟動 Vite。
 
 ### 單機託管試用
 
@@ -61,18 +61,18 @@ npm ci
 npm run build
 export CPROJECT_DATA_DIR="$HOME/.local/share/cproject-sync"
 export TZ=Asia/Taipei
-CPROJECT_PORT=18787 CPROJECT_PUBLIC_URL=http://localhost:18787 npm start
+CPROJECT_PORT=18787 npm start
 ```
 
 開啟 **http://localhost:18787** 就會直接載入共享工作區，不需建立帳號。`npm run server` 也可啟動相同服務。這裡由後端同時提供網頁與 API，不需要 Vite 或開發代理。
 
-請使用與 `CPROJECT_PUBLIC_URL` 相同的網址；此範例為 `http://localhost:18787`，不要改用 `127.0.0.1` 操作，否則來源檢查會拒絕寫入。`localhost` 只代表目前裝置，**手機不能用這個網址連到電腦**。
+也可使用 `http://127.0.0.1:18787`。`localhost` 只代表目前裝置，**手機不能用這個網址連到電腦**。
 
 ### 手機／外網使用
 
 1. 在常駐主機安裝 Node.js，將專案放到例如 `/opt/cproject`，執行 `npm ci && npm run build`。
 2. 使用獨立、非 root 的作業系統服務帳號；建立可供該帳號讀寫的資料目錄，例如 `/var/lib/cproject`。
-3. 設定 `CPROJECT_PORT=18787`、`CPROJECT_PUBLIC_URL=https://planner.example.com`、`CPROJECT_DATA_DIR=/var/lib/cproject`、`TZ=Asia/Taipei`，以服務帳號啟動後端。將範例網域改成自己的。
+3. 設定 `CPROJECT_PORT=18787`、`CPROJECT_DATA_DIR=/var/lib/cproject`、`TZ=Asia/Taipei`，以服務帳號啟動後端。
 4. 在後端前方配置 HTTPS 反向代理及適合的存取限制。此範例後端只監聽 `127.0.0.1:18787`，不要直接公開此 HTTP 埠。網頁與 `/api` 必須走同一網域，存取限制也必須同時保護兩者。
 5. 電腦與手機都開啟相同 HTTPS 網址，直接使用**同一共享工作區**。應用程式不提供個別使用者權限或私人工作區。
 
@@ -99,7 +99,6 @@ WorkingDirectory=/opt/cproject
 Environment=NODE_ENV=production
 Environment=CPROJECT_HOST=127.0.0.1
 Environment=CPROJECT_PORT=18787
-Environment=CPROJECT_PUBLIC_URL=https://planner.example.com
 Environment=CPROJECT_DATA_DIR=/var/lib/cproject
 Environment=TZ=Asia/Taipei
 ExecStart=/usr/bin/node --import tsx server/index.ts
@@ -143,10 +142,10 @@ journalctl -u cproject
 
 ### 維運與安全
 
-- `CPROJECT_HOST` 預設 `127.0.0.1`；`CPROJECT_PORT` 預設 `8787`；`CPROJECT_PUBLIC_URL` 預設 `http://localhost:8787`；`CPROJECT_DATA_DIR` 預設專案下的 `server-data`。除了 loopback 測試，伺服器網址必須使用 HTTPS，不能包含子路徑或帳密。
-- 所有 API 寫入必須符合 `CPROJECT_PUBLIC_URL` 的 Origin；不開放 CORS，已移除 `CPROJECT_ALLOWED_ORIGINS`。部署時讓反向代理保留瀏覽器 Origin，不要以放寬驗證繞過設定錯誤。
+- `CPROJECT_HOST` 預設 `127.0.0.1`；`CPROJECT_PORT` 預設 `8787`；`CPROJECT_DATA_DIR` 預設專案下的 `server-data`。外網部署仍應使用 HTTPS。
+- 已移除後端 Origin 限制及 `CPROJECT_PUBLIC_URL` 設定；不同網域、`Origin: null` 或沒有 Origin 的請求皆不會因來源被拒絕。舊部署可刪除該環境變數，保留亦不生效。這移除了一道瀏覽器跨站防護，但沒有開放 CORS；瀏覽器前端仍使用同源 `/api`。JSON 格式、資料驗證、大小限制及版本衝突檢查維持不變。
 - 已移除建帳號／重設密碼命令及應用程式驗證。若反向代理需要使用者驗證，應由代理完成；前端保留同源請求的瀏覽器憑證支援（例如代理設定的 cookie）。不要將後端裸露在可繞過代理的網路介面。
-- SQLite 本身**未加密**。保護主機、資料目錄與備份；Origin 檢查只能限制瀏覽器跨站請求，不能阻止能直接連線的訪客或程式讀寫。
+- SQLite 本身**未加密**。保護主機、資料目錄與備份；後端沒有應用程式驗證或 Origin 防護，應由網路或反向代理限制存取。
 - 備份 `CPROJECT_DATA_DIR/sync.sqlite` 前先停止服務，或使用 SQLite 一致性備份工具；**不要在服務運作時只複製主檔而漏掉 WAL**。完整資料庫備份也包含舊工作區封存，須視為敏感資料。JSON 匯出只包含目前共享工作區與異動紀錄。
 - 限制：單次請求 10 MiB、工作區 5 MiB、每次交易 20,000 筆異動、工作區歷史 40 MiB 或 100,000 筆。達上限會明確拒絕，不會刪除舊資料。歷史滿時先匯出 JSON 並完整備份，停止服務後改用新的資料目錄再匯入工作區；匯入會重建當前資料異動，不搬入全部歷史，舊目錄應保留。
 - `server-data/`、`.env*`、`dist/` 不納入 Git。若改用其他資料路徑，也應放在版本庫外。`package-lock.json` 應保留。
@@ -184,4 +183,4 @@ journalctl -u cproject
 - `public/favicon.ico`：紫色 C· 網站圖示，包含 16、24、32、48、64、128、256 px 尺寸。
 - `src/i18n/{zh-TW,en,ja}.ts`：完整三語字典；缺 key 以英文回退。
 
-核心覆蓋率門檻為 statements／branches／functions／lines 各 90%；測試使用 America/New_York 時區，涵蓋 DST、假日、反向計算、成環拒絕、依賴扇入、階層、覆蓋、展延與提醒去重。另有瀏覽器提醒狀態、舊備份、免登入同步交易、Origin 保護與後端資料遷移測試。
+核心覆蓋率門檻為 statements／branches／functions／lines 各 90%；測試使用 America/New_York 時區，涵蓋 DST、假日、反向計算、成環拒絕、依賴扇入、階層、覆蓋、展延與提醒去重。另有瀏覽器提醒狀態、舊備份、免登入同步交易、不受 Origin 限制的事件儲存與後端資料遷移測試。

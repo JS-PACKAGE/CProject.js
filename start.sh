@@ -4,7 +4,6 @@ set -eu
 cd -- "$(dirname -- "$0")"
 
 export CPROJECT_PORT="${CPROJECT_PORT:-18787}"
-export CPROJECT_PUBLIC_URL="${CPROJECT_PUBLIC_URL:-http://localhost:$CPROJECT_PORT}"
 export TZ="${TZ:-Asia/Taipei}"
 
 if ! npm ls --all --include=dev > /dev/null 2>&1; then

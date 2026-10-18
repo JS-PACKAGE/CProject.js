@@ -161,7 +161,7 @@ describe("standalone shared sync", () => {
     expect((await workspace()).snapshot.reminders[0]).toMatchObject({ fired_at: now, version: 2 });
     expect((await post("/api/reminders/fired", {})).status).toBe(404);
   });
-  it("removes account endpoints, rejects legacy clients and preserves origin checks", async () => {
+  it("removes account endpoints and rejects legacy clients", async () => {
     expect((await fetch(url + "/api/session")).status).toBe(404);
     for (const path of ["/api/login", "/api/logout"]) expect((await post(path, {})).status).toBe(404);
     const before = await workspace();
@@ -172,9 +172,6 @@ describe("standalone shared sync", () => {
       expect(await response.json()).toMatchObject({ code: "protocol_changed" });
     }
     expect((await fetch(url + "/api/commit", { method: "POST", headers, body: JSON.stringify({ base_revision: 0, changes: rename(before.snapshot, "Old tab"), settings: null }) })).status).toBe(409);
-    expect((await post("/api/commit", {}, null)).status).toBe(403);
-    expect((await post("/api/commit", {}, "https://evil.example")).status).toBe(403);
-    expect((await fetch(url + "/api/workspace", { headers: { Origin: "https://evil.example" } })).status).toBe(403);
     expect(await workspace()).toEqual(before);
   });
   it("serves SPA and assets securely without API fallback", async () => {
@@ -198,35 +195,27 @@ describe("standalone shared sync", () => {
     expect(store.workspace()).toEqual(before);
     expect(store.changes()).toEqual([]);
   });
-  it("supports HTTPS origins without cookies or cross-origin API access", async () => {
-    const secureOrigin = "https://projects.example";
-    const httpsConfigured = createServer({ ...configFromEnv({ CPROJECT_PUBLIC_URL: secureOrigin }), distDir: join(directory, "dist") }, store);
-    httpsConfigured.listen(0, "127.0.0.1");
-    await once(httpsConfigured, "listening");
-    try {
-      const address = httpsConfigured.address();
-      if (!address || typeof address === "string") throw new Error("Missing TCP test address");
-      const endpoint = `http://127.0.0.1:${address.port}`;
-      const response = await fetch(endpoint + "/api/commit", { method: "POST", headers: { Origin: secureOrigin, "Content-Type": "application/json" }, body: JSON.stringify({ base_revision: 0, changes: [], settings: null }) });
-      expect(response.status).toBe(200);
-      expect(response.headers.get("set-cookie")).toBeNull();
-      expect(response.headers.get("access-control-allow-origin")).toBeNull();
-      const rejected = await fetch(endpoint + "/api/workspace", { headers: { Origin: "https://evil.example" } });
-      expect(rejected.status).toBe(403);
-      expect(rejected.headers.get("access-control-allow-origin")).toBeNull();
-      expect((await fetch(endpoint + "/api/commit", { method: "OPTIONS", headers: { Origin: "https://evil.example", "Access-Control-Request-Method": "POST" } })).status).toBe(403);
-    } finally {
-      const { promise, resolve } = Promise.withResolvers<void>();
-      httpsConfigured.close(() => resolve());
-      httpsConfigured.closeAllConnections();
-      await promise;
-    }
+  it.each(["https://cpj.yustellar.dev", "null", null])("persists events without restricting the request origin (%s)", async requestOrigin => {
+    const headers = requestOrigin ? { Origin: requestOrigin } : undefined;
+    const response = await fetch(url + "/api/workspace", { headers });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    const before = await workspace();
+    const next = structuredClone(before.snapshot);
+    const event = { ...entity(), calendar_id: next.work_calendars[0]!.id, title: "Saved event", start_at: Date.UTC(2026, 9, 18, 2), end_at: Date.UTC(2026, 9, 18, 3), all_day: false, kind: "meeting" as const, rrule: null, override: null };
+    next.calendar_events.push(event);
+    const saved = await post("/api/commit", { base_revision: before.revision, changes: makeChanges(before.snapshot, next, device), settings: null }, requestOrigin);
+    expect(saved.status).toBe(200);
+    expect(saved.headers.get("set-cookie")).toBeNull();
+    expect(saved.headers.get("access-control-allow-origin")).toBeNull();
+    const persisted = await workspace();
+    expect(persisted.revision).toBe(before.revision + 1);
+    expect(persisted.snapshot.calendar_events).toEqual([expect.objectContaining(event)]);
   });
-  it("requires HTTPS except on loopback and carries the migration selection", () => {
-    expect(configFromEnv({ CPROJECT_PUBLIC_URL: "https://projects.example", CPROJECT_LEGACY_ACCOUNT: "alice" })).toMatchObject({ publicUrl: "https://projects.example", legacyAccount: "alice" });
-    expect(configFromEnv({ CPROJECT_PUBLIC_URL: "http://127.0.0.1:8787" }).publicUrl).toBe("http://127.0.0.1:8787");
-    for (const invalid of ["http://projects.example", "tauri://localhost", "https://projects.example/path", "https://user:secret@projects.example", "https://projects.example?redirect=elsewhere"])
-      expect(() => configFromEnv({ CPROJECT_PUBLIC_URL: invalid })).toThrow("CPROJECT_PUBLIC_URL");
+  it("does not enable cross-origin browser preflights", async () => {
+    const response = await fetch(url + "/api/commit", { method: "OPTIONS", headers: { Origin: "https://other.example", "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "content-type" } });
+    expect(response.status).toBe(404);
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
   });
   it("returns JSON validation and oversize failures", async () => {
     const invalid = await fetch(url + "/api/commit", { method: "POST", headers: { "Content-Type": "application/json", Origin: origin }, body: "{" });
