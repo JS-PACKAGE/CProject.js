@@ -38,6 +38,22 @@ npm run preview
 
 後端使用**單一共享工作區，不設帳號、密碼或登入驗證**。任何可連到網站的人都能讀取、修改、匯出及取代這份資料。公開部署前，請在反向代理加上存取控制，或限制在 VPN／可信任網路內；HTTPS 與 Origin 檢查不等於使用者驗證。
 
+### 啟動腳本
+
+```sh
+./start.sh
+```
+
+需要上述 Node.js 與 npm。腳本會切換到專案目錄，以 `npm ls --all --include=dev` 檢查依賴樹；缺少套件或版本不符時，自動執行 `npm ci --include=dev`，依鎖定檔重裝依賴（包含建置需要的 devDependencies）。依賴完整時略過安裝，每次建置網頁後以前景程序啟動同源後端；按 `Ctrl+C` 停止。安裝或建置失敗時不會啟動服務。
+
+預設網址為 **http://localhost:18787**，時區為 `Asia/Taipei`，資料沿用後端預設的專案 `server-data/`，不會搬移既有資料。可覆寫環境變數，例如：
+
+```sh
+CPROJECT_PORT=18788 CPROJECT_DATA_DIR="$HOME/.local/share/cproject-sync" ./start.sh
+```
+
+未指定 `CPROJECT_PUBLIC_URL` 時，網址會隨埠號變為 `http://localhost:埠號`。外網部署請明確設定 HTTPS 的 `CPROJECT_PUBLIC_URL`，其餘後端環境變數照常生效；腳本不會自動讀取 `.env`、更換被佔用的埠或啟動 Vite。
+
 ### 單機託管試用
 
 ```sh
