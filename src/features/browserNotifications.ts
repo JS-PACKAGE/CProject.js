@@ -10,7 +10,7 @@ export interface BrowserNotifications {
   requestPermission: () => Promise<void>;
 }
 export function workspaceIdentity(state: SyncState): string {
-  return `${state.mode}:${state.serverUrl}:${state.user?.id ?? ""}`;
+  return `${state.mode}:${state.serverUrl}`;
 }
 function permissionStatus(): NotificationStatus {
   if (!("Notification" in window)) return "unsupported";
@@ -70,7 +70,7 @@ export function useBrowserReminders(enabled: boolean, identity: string): Browser
     const current = () => {
       const state = sync.getState();
       return !disposed && !invalidated && enabled && state.phase === "ready" &&
-        (state.mode === "local" || !!state.user) && workspaceIdentity(state) === identity;
+        workspaceIdentity(state) === identity;
     };
     const closeWorkspaceNotifications = () => {
       for (const notification of notifications) notification.close();
@@ -80,8 +80,7 @@ export function useBrowserReminders(enabled: boolean, identity: string): Browser
       if (worker) void worker.then(async (worker) => {
         if (!worker) return;
         for (const notification of await worker.getNotifications()) {
-          if (notification.tag.startsWith(prefix) ||
-              (sync.getState().phase === "signed_out" && notification.tag.startsWith("cproject:"))) {
+          if (notification.tag.startsWith(prefix)) {
             notification.close();
           }
         }

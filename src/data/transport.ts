@@ -26,7 +26,6 @@ export class SyncTransport {
   constructor(
     readonly origin: string,
     private onError: (error: SyncError) => void = () => {},
-    private accountId?: string,
   ) {}
 
   async request<T>(path: string, body?: unknown): Promise<T> {
@@ -39,7 +38,6 @@ export class SyncTransport {
         signal: AbortSignal.timeout(15_000),
         headers: {
           ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-          ...(this.accountId ? { "X-CProject-Account": this.accountId } : {}),
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });

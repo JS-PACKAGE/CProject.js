@@ -4,24 +4,21 @@ import { RemoteRepository } from "./repository";
 
 export interface SyncState {
   mode: "local" | "server";
-  phase: "starting" | "signed_out" | "connecting" | "ready" | "offline";
+  phase: "starting" | "connecting" | "ready" | "offline";
   serverUrl: string;
-  user: { id: string; username: string } | null;
   hosted: boolean;
   error: string | null;
   lastSyncedAt: number | null;
   busy: boolean;
 }
-type User = NonNullable<SyncState["user"]>;
 
 class SyncController {
   private state: SyncState = {
-    mode: "local", phase: "starting", serverUrl: "", user: null,
+    mode: "local", phase: "starting", serverUrl: "",
     hosted: false, error: null, lastSyncedAt: null, busy: false,
   };
   private listeners = new Set<(state: SyncState) => void>();
   private initialized: Promise<void> | null = null;
-  private transport: SyncTransport | null = null;
   private remote: RemoteRepository | null = null;
   private timer: number | undefined;
   private refreshing: Promise<void> | null = null;
@@ -36,133 +33,98 @@ class SyncController {
     for (const listener of this.listeners) listener(this.state);
   }
   initialize(): Promise<void> {
-    this.initialized ??= this.start();
+    if (!this.initialized) {
+      window.addEventListener("online", () => { void this.refresh().catch(() => {}); });
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden && this.state.mode === "server") void this.refresh().catch(() => {});
+      });
+      this.initialized = this.connect();
+    }
     return this.initialized;
   }
-  private async start(): Promise<void> {
-    window.addEventListener("online", () => { void this.refresh().catch(() => {}); });
-    document.addEventListener("visibilitychange", () => {
-      if (!document.hidden && this.state.user) void this.refresh().catch(() => {});
-    });
+  private async connect(): Promise<void> {
     const origin = window.location.origin;
-    let hosted = localStorage.getItem("cproject-hosted-sync") === "true";
+    this.publish({ busy: true, phase: "connecting", error: null });
     try {
       const response = await fetch("/api/info", {
-        cache: "no-store", redirect: "error", signal: AbortSignal.timeout(8_000),
+        credentials: "same-origin", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(8_000),
       });
+      let hosted = false;
       if (response.ok && response.headers.get("content-type")?.includes("application/json")) {
         const info = await response.json() as { service?: string; version?: number };
-        hosted ||= info.service === "cproject-sync" && info.version === 1;
-      } else if (response.status >= 500) {
+        if (info.service === "cproject-sync") {
+          if (info.version !== 2) throw new Error("This sync server uses an incompatible protocol. Update the server and reload this page.");
+          hosted = true;
+        }
+      } else if (response.status !== 404 && response.ok === false) {
         throw new Error("The sync server is unavailable. Please try again.");
       }
-      if (!hosted) { this.publish({ phase: "ready", serverUrl: origin }); return; }
+      if (!hosted) {
+        if (localStorage.getItem("cproject-hosted-sync") === "true")
+          throw new Error("The shared workspace is unavailable. Please try again.");
+        this.publish({ mode: "local", hosted: false, phase: "ready", serverUrl: origin });
+        return;
+      }
       localStorage.setItem("cproject-hosted-sync", "true");
-      this.publish({ mode: "server", hosted: true, serverUrl: serverOrigin(origin), phase: "signed_out" });
-      if (localStorage.getItem("cproject-session-blocked") === "true") return;
-      const transport = new SyncTransport(origin);
-      const { user } = await transport.request<{ user: User }>("session");
-      await this.activate(origin, user);
+      this.publish({ mode: "server", hosted: true, serverUrl: serverOrigin(origin) });
+      await this.activate(origin);
     } catch (error) {
       // An unavailable hosted API must never silently open an unrelated local workspace.
       this.publish({
-        mode: "server", hosted: true, serverUrl: origin, phase: "signed_out", user: null,
-        error: error instanceof SyncError && error.status === 401 ? null : String(error instanceof Error ? error.message : error),
+        mode: "server", hosted: true, serverUrl: origin, phase: "offline",
+        error: error instanceof Error ? error.message : String(error),
       });
-    }
+    } finally { this.publish({ busy: false }); }
   }
   private fail(error: SyncError, repository: RemoteRepository): void {
     if (this.remote !== repository) return;
-    if (error.status === 401) {
-      repository.stop();
-      this.stopPolling();
-      localStorage.setItem("cproject-session-blocked", "true");
-      this.publish({ phase: "signed_out", user: null, error: error.message, lastSyncedAt: null });
-    } else {
-      this.publish({
-        phase: error.status === 0 || error.status >= 500 ? "offline" : "ready",
-        error: error.message,
-      });
-    }
+    this.publish({
+      phase: error.status === 409 && error.code !== "protocol_changed" ? "ready" : "offline",
+      error: error.message,
+    });
   }
-  private async activate(origin: string, user: User): Promise<void> {
-    if (!user || typeof user.id !== "string" || typeof user.username !== "string")
-      throw new Error("Invalid sign-in response.");
-    const transport = new SyncTransport(origin, (error) => this.fail(error, repository), user.id);
+  private async activate(origin: string): Promise<void> {
+    const transport = new SyncTransport(origin, (error) => this.fail(error, repository));
     const repository = new RemoteRepository(transport, localRepository, (warning) => {
-      if (this.remote === repository && this.state.user)
+      if (this.remote === repository)
         this.publish({ phase: "ready", lastSyncedAt: Date.now(), error: warning });
     });
-    this.remote?.stop();
-    this.stopPolling();
     this.remote = repository;
-    this.transport = transport;
-    this.publish({ mode: "server", phase: "connecting", serverUrl: origin, user, error: null, lastSyncedAt: null });
     await app.setRepository(repository);
-    try {
-      await app.load();
-      localStorage.removeItem("cproject-session-blocked");
-      this.publish({ phase: "ready" });
-      this.timer = window.setInterval(() => {
-        if (!document.hidden && this.state.user && !this.state.busy)
-          void this.refresh().catch(() => {});
-      }, 10_000);
-    } catch (error) {
-      repository.stop();
-      this.publish({ phase: "signed_out", user: null, lastSyncedAt: null });
-      throw error;
-    }
-  }
-  async login(serverUrl: string, username: string, password: string): Promise<void> {
-    if (this.state.busy) throw new Error("Another connection operation is in progress.");
-    const origin = serverOrigin(serverUrl);
-    if (origin !== window.location.origin)
-      throw new Error("Open the server's web address to sign in. Browser sync uses the same origin.");
-    this.publish({ busy: true, phase: "connecting", error: null });
-    try {
-      const transport = new SyncTransport(origin);
-      const result = await transport.request<{ user: User }>("login", {
-        username: username.trim(), password,
-      });
-      await this.activate(origin, result.user);
-    } catch (error) {
-      this.publish({ phase: "signed_out", user: null, error: error instanceof Error ? error.message : String(error) });
-      throw error;
-    } finally { this.publish({ busy: false }); }
-  }
-  private stopPolling(): void {
     window.clearInterval(this.timer);
-    this.timer = undefined;
-  }
-  async logout(): Promise<void> {
-    if (this.state.busy) throw new Error("Another connection operation is in progress.");
-    this.publish({ busy: true, user: null, phase: "signed_out", lastSyncedAt: null, error: null });
-    localStorage.setItem("cproject-session-blocked", "true");
-    this.remote?.stop();
-    this.stopPolling();
-    try {
-      if (this.transport) await this.transport.request("logout", {});
-      this.transport = null;
-    } catch (error) {
-      this.publish({ error: "Signed out on this device, but the server could not confirm session revocation. Reconnect and sign out again." });
-      throw error;
-    } finally { this.publish({ busy: false }); }
+    this.timer = window.setInterval(() => {
+      if (!document.hidden && !this.state.busy) void this.refresh().catch(() => {});
+    }, 10_000);
+    await app.load();
   }
   refresh(): Promise<void> {
-    if (this.state.mode === "server" && !this.state.user) return Promise.resolve();
+    if (this.state.busy) return this.refreshing ?? this.initialized ?? Promise.resolve();
     if (!this.refreshing) {
-      this.refreshing = app.refresh().finally(() => { this.refreshing = null; });
+      this.refreshing = (async () => {
+        if (this.state.mode === "server" && !this.remote) {
+          await this.connect();
+          return;
+        }
+        this.publish({ busy: true });
+        try { await app.refresh(); }
+        catch (error) {
+          if (this.state.mode === "server") this.publish({
+            phase: "offline", error: error instanceof Error ? error.message : String(error),
+          });
+          throw error;
+        } finally { this.publish({ busy: false }); }
+      })().finally(() => { this.refreshing = null; });
     }
     return this.refreshing;
   }
   async uploadLocal(): Promise<void> {
-    if (!this.remote || !this.state.user) throw new Error("Sign in before uploading local data.");
+    if (!this.remote || this.state.phase !== "ready") throw new Error("Connect to the shared workspace before uploading local data.");
     if (this.state.busy) throw new Error("Another connection operation is in progress.");
     this.publish({ busy: true, error: null });
     try {
       const { snapshot: destination } = JSON.parse(await app.exportJSON());
       if (this.remote.revision !== 0)
-        throw new Error("Local data can only be uploaded to a new, unused account. Export a backup and use Import for an intentional replacement.");
+        throw new Error("Local data can only be uploaded to a new, unused shared workspace. Export a backup and use Import for an intentional replacement.");
       const snapshot = await localRepository.load();
       if (!snapshot.work_calendars.length) throw new Error("There is no local workspace to upload.");
       await app.importJSON(JSON.stringify({ format: "cproject-js", version: 1, snapshot }), destination);

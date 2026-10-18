@@ -13,7 +13,6 @@ export function sharedSettings(settings: Settings): Settings {
 export class RemoteRepository implements Repository {
   revision = -1;
   private timezone = "";
-  private stopped = false;
   constructor(
     private transport: SyncTransport,
     private local: Repository,
@@ -26,12 +25,7 @@ export class RemoteRepository implements Repository {
     return this.refreshSchedules ? null :
       `This workspace uses ${this.timezone}. Set this device to the same time zone before editing; viewing is still available.`;
   }
-  stop(): void { this.stopped = true; }
-  private ensureActive(): void {
-    if (this.stopped) throw new Error("This sync session has ended. Sign in again.");
-  }
   async load(): Promise<Snapshot> {
-    this.ensureActive();
     const { snapshot, revision, timezone } = await this.transport.request<{
       snapshot: Snapshot; revision: number; timezone: string;
     }>("workspace");
@@ -39,7 +33,6 @@ export class RemoteRepository implements Repository {
     if (!Number.isSafeInteger(revision) || revision < 0 || typeof timezone !== "string")
       throw new Error("The server returned an invalid workspace.");
     const local = await this.local.load();
-    this.ensureActive();
     this.revision = revision;
     this.timezone = timezone;
     for (const key of deviceKeys) snapshot.settings[key] = local.settings[key];
@@ -47,7 +40,6 @@ export class RemoteRepository implements Repository {
     return snapshot;
   }
   async commit(changes: Change[], settings: Settings | null): Promise<void> {
-    this.ensureActive();
     if (this.timezoneWarning) throw new Error(this.timezoneWarning);
     if (this.revision < 0) throw new Error("Load the workspace before editing.");
     const remote = changes.flatMap((change): Change[] => {
@@ -63,7 +55,6 @@ export class RemoteRepository implements Repository {
       settings: remote.some((c) => c.table === "settings") && settings
         ? sharedSettings(settings) : null,
     });
-    this.ensureActive();
     this.revision = result.revision;
     if (settings) {
       const before = await this.local.load();
@@ -75,10 +66,8 @@ export class RemoteRepository implements Repository {
     this.synced(null);
   }
   async changes(): Promise<Change[]> {
-    this.ensureActive();
     const changes = await this.transport.request<Change[]>("changes");
     const local = await this.local.load();
-    this.ensureActive();
     return changes.map((change) => {
       if (change.table !== "settings") return change;
       const before = { ...(change.before as Settings) };

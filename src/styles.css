@@ -1551,19 +1551,19 @@ legend {
   margin: 0;
   min-width: 0;
 }
-.login-shell {
+.connection-shell {
   min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: 20px;
   position: relative;
 }
-.login-shell > .theme-toggle {
+.connection-shell > .theme-toggle {
   position: absolute;
   top: max(12px, env(safe-area-inset-top));
   right: max(12px, env(safe-area-inset-right));
 }
-.login-panel {
+.connection-panel {
   width: min(100%, 440px);
 }
 .sync-settings {
@@ -1758,7 +1758,7 @@ legend {
   .dialog-actions {
     flex-wrap: wrap;
   }
-  .login-shell {
+  .connection-shell {
     padding: 12px;
   }
 }

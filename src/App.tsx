@@ -23,7 +23,7 @@ import { sync } from "./sync/client";
 import { useUI, type View } from "./features/ui";
 import "./i18n";
 import { toggleTheme, useTheme } from "./theme";
-import { useBrowserReminders } from "./features/browserNotifications";
+import { useBrowserReminders, workspaceIdentity } from "./features/browserNotifications";
 const navigation: { view: View; icon: LucideIcon }[] = [
   { view: "projects", icon: FolderKanban },
   { view: "calendar", icon: CalendarDays },
@@ -49,12 +49,11 @@ export default function App() {
   const [pending, setPending] = useState(0);
   const [syncState, setSyncState] = useState(sync.getState);
   const [initialized, setInitialized] = useState(false);
-  const identity = `${syncState.mode}:${syncState.serverUrl}:${syncState.user?.id ?? ""}`;
+  const identity = workspaceIdentity(syncState);
   const snapshotIdentity = useRef("");
   const notifications = useBrowserReminders(
     initialized && syncState.phase === "ready" &&
-      snapshotIdentity.current === identity && snapshot !== null &&
-      (syncState.mode === "local" || !!syncState.user),
+      snapshotIdentity.current === identity && snapshot !== null,
     identity,
   );
   async function run(action: () => Promise<unknown>) {
@@ -71,7 +70,7 @@ export default function App() {
     let active = true;
     let currentIdentity = "";
     const unsubscribeSync = sync.subscribe((state) => {
-      const nextIdentity = `${state.mode}:${state.serverUrl}:${state.user?.id ?? ""}`;
+      const nextIdentity = workspaceIdentity(state);
       if (nextIdentity !== currentIdentity) {
         currentIdentity = nextIdentity;
         snapshotIdentity.current = "";
@@ -83,9 +82,8 @@ export default function App() {
     });
     const unsubscribeApp = app.subscribe((value) => {
       const state = sync.getState();
-      if (state.phase === "starting" || state.phase === "signed_out" ||
-          (state.mode === "server" && !state.user)) return;
-      snapshotIdentity.current = `${state.mode}:${state.serverUrl}:${state.user?.id ?? ""}`;
+      if (state.phase === "starting") return;
+      snapshotIdentity.current = workspaceIdentity(state);
       setSnapshot(value);
     });
     void run(async () => {
@@ -121,16 +119,16 @@ export default function App() {
     month: "long",
     day: "numeric",
   });
-  const canShowWorkspace = syncState.phase !== "starting" && syncState.phase !== "signed_out" &&
-    (syncState.mode === "local" || !!syncState.user);
+  const canShowWorkspace = syncState.phase !== "starting" &&
+    (syncState.mode === "local" || (snapshotIdentity.current === identity && snapshot !== null));
   if (!canShowWorkspace) {
     return (
-      <div className="login-shell">
+      <div className="connection-shell">
         <ThemeToggle />
-        <section className="panel login-panel">
+        <section className="panel connection-panel">
           <h1>CProject</h1>
           <p className="muted">{t("tagline")}</p>
-          {syncState.phase === "starting" ? <p role="status">{t("loading")}</p> :
+          {syncState.phase === "starting" || (syncState.phase === "connecting" && !syncState.hosted) ? <p role="status">{t("loading")}</p> :
             <SyncAccess state={syncState} run={run} />}
           {error && error !== syncState.error && <p className="error" role="alert">{error}</p>}
         </section>
@@ -236,10 +234,11 @@ export default function App() {
         </header>
         {syncState.mode === "server" && (
           <div className="sync-banner" role="status">
-            <span>{syncState.user?.username} · {t(`sync_${syncState.phase}`)}
+            <span>{t("sharedWorkspace")} · {t(`sync_${syncState.phase}`)}
               {syncState.lastSyncedAt && ` · ${t("lastSynced")}: ${new Intl.DateTimeFormat(i18n.language, { timeStyle: "short" }).format(syncState.lastSyncedAt)}`}
             </span>
-            <button disabled={syncState.busy} onClick={() => void run(() => sync.refresh())}>{t("refresh")}</button>
+            <button disabled={syncState.busy} onClick={() => void run(() => sync.refresh())}>{t(syncState.phase === "ready" ? "refresh" : "reconnect")}</button>
+            <span className="muted">{t("sharedAccessWarning")}</span>
             {syncState.error && <span className="error">{syncState.error}</span>}
           </div>
         )}

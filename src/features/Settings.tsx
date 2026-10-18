@@ -245,43 +245,23 @@ export function SyncAccess({ state, run }: {
   run: ViewProps["run"];
 }) {
   const { t, i18n } = useTranslation();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
   return (
     <div className="sync-access">
-      <h2>{t("syncAccount")}</h2>
-      {state.user ? (
+      <h2>{t(state.hosted ? "sharedWorkspace" : "data")}</h2>
+      {state.hosted ? (
         <>
-          <p className="sync-identity"><strong>{state.user.username}</strong><br />{state.serverUrl}</p>
+          <p className="sync-identity">{state.serverUrl}</p>
+          <p className="muted">{t("sharedAccessWarning")}</p>
           <p role="status">{t(`sync_${state.phase}`)}
             {state.lastSyncedAt && ` · ${t("lastSynced")}: ${new Intl.DateTimeFormat(i18n.language, { dateStyle: "short", timeStyle: "short" }).format(state.lastSyncedAt)}`}
           </p>
           <div className="data-actions">
-            <button disabled={state.busy} onClick={() => void run(() => sync.refresh())}>{t("refresh")}</button>
-            <button disabled={state.busy} onClick={() => void run(() => sync.logout())}>{t("signOut")}</button>
+            <button disabled={state.busy} onClick={() => void run(() => sync.refresh())}>{t(state.phase === "ready" ? "refresh" : "reconnect")}</button>
             <button disabled={state.busy || state.phase !== "ready"} onClick={() => {
               if (window.confirm(t("uploadLocalConfirm"))) void run(() => sync.uploadLocal());
             }}>{t("uploadLocal")}</button>
           </div>
           <p className="muted">{t("uploadLocalHint")}</p>
-        </>
-      ) : state.hosted ? (
-        <>
-          <p className="muted">{t("syncLoginHint")}</p>
-          <form onSubmit={(event) => {
-            event.preventDefault();
-            const secret = password;
-            setPassword("");
-            void run(() => sync.login(window.location.origin, username.trim(), secret));
-          }}>
-            <label>{t("username")}
-              <input required name="username" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" autoCapitalize="none" spellCheck={false} />
-            </label>
-            <label>{t("password")}
-              <input required name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
-            </label>
-            <button className="primary" disabled={state.busy}>{t(state.busy ? "loading" : "signIn")}</button>
-          </form>
         </>
       ) : <p className="muted">{t("webServerHint")}</p>}
       {state.error && <p className="error" role="alert">{state.error}</p>}
