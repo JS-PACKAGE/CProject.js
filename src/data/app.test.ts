@@ -31,6 +31,21 @@ function reminder(patch: Partial<Reminder> = {}): Reminder {
 }
 afterEach(() => vi.useRealTimers());
 
+describe("hosted workspace requirement", () => {
+  it("does not initialize calendars or publish data before a repository is connected", async () => {
+    const app = new Application(undefined, "browser-one");
+    const subscriber = vi.fn();
+    app.subscribe(subscriber);
+    await expect(app.load()).rejects.toThrow("Connect to the shared workspace");
+    await expect(app.exportJSON()).rejects.toThrow("Connect to the shared workspace");
+    expect(subscriber).not.toHaveBeenCalled();
+    const repository = new MemoryRepository();
+    await app.setRepository(repository);
+    await app.refresh();
+    expect(subscriber).toHaveBeenCalledOnce();
+  });
+});
+
 describe("browser reminder delivery", () => {
   it("fires only active due reminders and preserves future, snoozed and deleted records", async () => {
     vi.useFakeTimers();

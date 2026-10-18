@@ -10,7 +10,7 @@ export interface BrowserNotifications {
   requestPermission: () => Promise<void>;
 }
 export function workspaceIdentity(state: SyncState): string {
-  return `${state.mode}:${state.serverUrl}`;
+  return state.serverUrl;
 }
 function permissionStatus(): NotificationStatus {
   if (!("Notification" in window)) return "unsupported";

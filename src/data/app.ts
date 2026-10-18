@@ -13,7 +13,6 @@ import { reschedule, extendProject, buildReminders } from "../core/scheduler";
 import { workingMinutesBetween, expandEvents } from "../core/calendar";
 import { activeSnapshot, entity, initialSnapshot, tables, webSettings } from "./entity";
 import { makeChanges } from "./changeLog";
-import { BrowserRepository } from "./repositories";
 import type { Repository } from "./repositories";
 import { validateSnapshot } from "./validation";
 
@@ -25,7 +24,7 @@ export class Application {
   private initialized = false;
   private lastWrite = 0;
   constructor(
-    private repository: Repository,
+    private repositoryValue?: Repository,
     deviceId?: string,
   ) {
     this.deviceId =
@@ -36,6 +35,10 @@ export class Application {
       v7();
     if (!deviceId && typeof localStorage !== "undefined")
       localStorage.setItem("cproject-device", this.deviceId);
+  }
+  private get repository(): Repository {
+    if (!this.repositoryValue) throw new Error("Connect to the shared workspace before accessing data.");
+    return this.repositoryValue;
   }
   private serialize<T>(work: () => Promise<T>): Promise<T> {
     const result = this.queue.then(work);
@@ -56,7 +59,7 @@ export class Application {
   }
   setRepository(repository: Repository): Promise<void> {
     return this.serialize(async () => {
-      this.repository = repository;
+      this.repositoryValue = repository;
       this.current = null;
     });
   }
@@ -356,7 +359,7 @@ export class Application {
       2,
     ));
   }
-  importJSON(json: string, expectedSnapshot?: Snapshot): Promise<void> {
+  importJSON(json: string): Promise<void> {
     return this.serialize(async () => {
       const parsed = JSON.parse(json) as {
         format?: string;
@@ -374,8 +377,6 @@ export class Application {
       }
       validateSnapshot(parsed.snapshot);
       const before = await this.repository.load();
-      if (expectedSnapshot && JSON.stringify(before) !== JSON.stringify(expectedSnapshot))
-        throw new Error("The destination changed. Refresh before uploading local data.");
       const next = structuredClone(parsed.snapshot);
       next.settings = webSettings(next.settings);
       await this.persist(before, next, true);
@@ -421,5 +422,4 @@ export class Application {
     });
   }
 }
-export const localRepository = new BrowserRepository();
-export const app = new Application(localRepository);
+export const app = new Application();

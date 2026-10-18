@@ -259,23 +259,15 @@ export function SyncAccess({ state, run }: {
   const { t, i18n } = useTranslation();
   return (
     <div className="sync-access">
-      <h2>{t(state.hosted ? "sharedWorkspace" : "data")}</h2>
-      {state.hosted ? (
-        <>
-          <p className="sync-identity">{state.serverUrl}</p>
-          <p className="muted">{t("sharedAccessWarning")}</p>
-          <p role="status">{t(`sync_${state.phase}`)}
-            {state.lastSyncedAt && ` · ${t("lastSynced")}: ${new Intl.DateTimeFormat(i18n.language, { dateStyle: "short", timeStyle: "short" }).format(state.lastSyncedAt)}`}
-          </p>
-          <div className="data-actions">
-            <button disabled={state.busy} onClick={() => void run(() => sync.refresh())}>{t(state.phase === "ready" ? "refresh" : "reconnect")}</button>
-            <button disabled={state.busy || state.phase !== "ready"} onClick={() => {
-              if (window.confirm(t("uploadLocalConfirm"))) void run(() => sync.uploadLocal());
-            }}>{t("uploadLocal")}</button>
-          </div>
-          <p className="muted">{t("uploadLocalHint")}</p>
-        </>
-      ) : <p className="muted">{t("webServerHint")}</p>}
+      <h2>{t("sharedWorkspace")}</h2>
+      <p className="sync-identity">{state.serverUrl}</p>
+      <p className="muted">{t("sharedAccessWarning")}</p>
+      <p role="status">{t(`sync_${state.phase}`)}
+        {state.lastSyncedAt && ` · ${t("lastSynced")}: ${new Intl.DateTimeFormat(i18n.language, { dateStyle: "short", timeStyle: "short" }).format(state.lastSyncedAt)}`}
+      </p>
+      <div className="data-actions">
+        <button disabled={state.busy} onClick={() => void run(() => sync.refresh())}>{t(state.phase === "ready" ? "refresh" : "reconnect")}</button>
+      </div>
       {state.error && <p className="error" role="alert">{state.error}</p>}
     </div>
   );

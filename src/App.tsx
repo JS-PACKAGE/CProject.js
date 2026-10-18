@@ -120,7 +120,7 @@ export default function App() {
     day: "numeric",
   });
   const canShowWorkspace = syncState.phase !== "starting" &&
-    (syncState.mode === "local" || (snapshotIdentity.current === identity && snapshot !== null));
+    snapshotIdentity.current === identity && snapshot !== null;
   if (!canShowWorkspace) {
     return (
       <div className="connection-shell">
@@ -128,7 +128,7 @@ export default function App() {
         <section className="panel connection-panel">
           <h1>CProject</h1>
           <p className="muted">{t("tagline")}</p>
-          {syncState.phase === "starting" || (syncState.phase === "connecting" && !syncState.hosted) ? <p role="status">{t("loading")}</p> :
+          {syncState.phase === "starting" ? <p role="status">{t("loading")}</p> :
             <SyncAccess state={syncState} run={run} />}
           {error && error !== syncState.error && <p className="error" role="alert">{error}</p>}
         </section>
@@ -136,8 +136,7 @@ export default function App() {
     );
   }
   const visibleSnapshot = snapshotIdentity.current === identity ? snapshot : null;
-  const mutationsDisabled = syncState.busy ||
-    (syncState.mode === "server" && syncState.phase !== "ready");
+  const mutationsDisabled = syncState.busy || syncState.phase !== "ready";
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -232,16 +231,14 @@ export default function App() {
             </button>
           </div>
         </header>
-        {syncState.mode === "server" && (
-          <div className="sync-banner" role="status">
-            <span>{t("sharedWorkspace")} · {t(`sync_${syncState.phase}`)}
-              {syncState.lastSyncedAt && ` · ${t("lastSynced")}: ${new Intl.DateTimeFormat(i18n.language, { timeStyle: "short" }).format(syncState.lastSyncedAt)}`}
-            </span>
-            <button disabled={syncState.busy} onClick={() => void run(() => sync.refresh())}>{t(syncState.phase === "ready" ? "refresh" : "reconnect")}</button>
-            <span className="muted">{t("sharedAccessWarning")}</span>
-            {syncState.error && <span className="error">{syncState.error}</span>}
-          </div>
-        )}
+        <div className="sync-banner" role="status">
+          <span>{t("sharedWorkspace")} · {t(`sync_${syncState.phase}`)}
+            {syncState.lastSyncedAt && ` · ${t("lastSynced")}: ${new Intl.DateTimeFormat(i18n.language, { timeStyle: "short" }).format(syncState.lastSyncedAt)}`}
+          </span>
+          <button disabled={syncState.busy} onClick={() => void run(() => sync.refresh())}>{t(syncState.phase === "ready" ? "refresh" : "reconnect")}</button>
+          <span className="muted">{t("sharedAccessWarning")}</span>
+          {syncState.error && <span className="error">{syncState.error}</span>}
+        </div>
         {error && error !== syncState.error && (
           <div className="error global-error" role="alert">
             <span>

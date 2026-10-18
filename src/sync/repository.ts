@@ -1,11 +1,9 @@
-import { v7 } from "uuid";
 import type { Change, Settings, Snapshot } from "../core/types";
 import type { Repository } from "../data/repositories";
-import { makeChanges } from "../data/changeLog";
+import { getNotificationSound, setNotificationSound } from "../data/deviceSettings";
 import { validateSnapshot } from "../data/validation";
 import { SyncTransport } from "../data/transport";
 
-const deviceKeys = ["notification_sound"] as const;
 export function sharedSettings(settings: Settings): Settings {
   return { ...settings, notification_sound: true };
 }
@@ -15,7 +13,6 @@ export class RemoteRepository implements Repository {
   private timezone = "";
   constructor(
     private transport: SyncTransport,
-    private local: Repository,
     private synced: (warning: string | null) => void,
   ) {}
   get refreshSchedules(): boolean {
@@ -32,10 +29,9 @@ export class RemoteRepository implements Repository {
     validateSnapshot(snapshot);
     if (!Number.isSafeInteger(revision) || revision < 0 || typeof timezone !== "string")
       throw new Error("The server returned an invalid workspace.");
-    const local = await this.local.load();
     this.revision = revision;
     this.timezone = timezone;
-    for (const key of deviceKeys) snapshot.settings[key] = local.settings[key];
+    snapshot.settings.notification_sound = getNotificationSound();
     this.synced(this.timezoneWarning);
     return snapshot;
   }
@@ -56,23 +52,17 @@ export class RemoteRepository implements Repository {
         ? sharedSettings(settings) : null,
     });
     this.revision = result.revision;
-    if (settings) {
-      const before = await this.local.load();
-      const next = structuredClone(before);
-      for (const key of deviceKeys) next.settings[key] = settings[key];
-      const localChanges = makeChanges(before, next, v7());
-      if (localChanges.length) await this.local.commit(localChanges, next.settings);
-    }
+    if (settings) setNotificationSound(settings.notification_sound);
     this.synced(null);
   }
   async changes(): Promise<Change[]> {
     const changes = await this.transport.request<Change[]>("changes");
-    const local = await this.local.load();
+    const sound = getNotificationSound();
     return changes.map((change) => {
       if (change.table !== "settings") return change;
       const before = { ...(change.before as Settings) };
       const payload = { ...(change.payload as Settings) };
-      for (const key of deviceKeys) before[key] = payload[key] = local.settings[key];
+      before.notification_sound = payload.notification_sound = sound;
       return { ...change, before, payload };
     });
   }
